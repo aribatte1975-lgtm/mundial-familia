@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
-import { getRanking, getMatches, getPredictionsByUser, calculatePoints, getSettings } from '../lib/supabase'
+import {
+  getRanking, getMatches, getPredictionsByUser,
+  calculatePoints, getSettings
+} from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import RankingTable from '../components/RankingTable'
 import Achievements from '../components/Achievements'
 import { Trophy, BarChart3, Award } from 'lucide-react'
+import { useRealtime } from '../hooks/useRealtime'
 
 const Ranking = () => {
   const { user } = useAuth()
@@ -11,24 +15,35 @@ const Ranking = () => {
   const [view, setView] = useState('ranking')
   const [selectedPlayer, setSelectedPlayer] = useState(null)
   const [finishedMatches, setFinishedMatches] = useState([])
-  const [allMatches, setAllMatches] = useState([])
   const [allPredictions, setAllPredictions] = useState({})
   const [settings, setSettings] = useState({ pointsExact: 5, pointsCorrect: 3 })
   const [loading, setLoading] = useState(true)
   const [selectedAchievementPlayer, setSelectedAchievementPlayer] = useState(null)
+  const [updateFlash, setUpdateFlash] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  // Tiempo real en matches y predictions
+  useRealtime('matches', () => {
+    setUpdateFlash(true)
+    setTimeout(() => setUpdateFlash(false), 2000)
+    loadData(false)
+  })
 
-  const loadData = async () => {
-    setLoading(true)
+  useRealtime('predictions', () => {
+    loadData(false)
+  })
+
+  useEffect(() => { loadData(true) }, [])
+
+  const loadData = async (showLoading = true) => {
+    if (showLoading) setLoading(true)
     const [r, m, s] = await Promise.all([getRanking(), getMatches(), getSettings()])
     setRanking(r)
-    setAllMatches(m)
     setFinishedMatches(m.filter(match => match.status === 'finished'))
     setSettings(s)
-    // Por defecto mostrar logros del usuario actual
-    setSelectedAchievementPlayer(r.find(p => p.id === user.id))
-    setLoading(false)
+    setSelectedAchievementPlayer(prev =>
+      prev ? r.find(p => p.id === prev.id) : r.find(p => p.id === user.id)
+    )
+    if (showLoading) setLoading(false)
   }
 
   const loadPlayerPredictions = async (playerId) => {
@@ -43,25 +58,36 @@ const Ranking = () => {
     await loadPlayerPredictions(playerId)
   }
 
-  // Calcular stats extra para logros
-  const getAchievementStats = (player) => {
-    const finishedCount = finishedMatches.length
-    const predCount = player.totalPredictions
-    const missedPredictions = finishedCount - predCount
-    const rankPosition = ranking.findIndex(r => r.id === player.id) + 1
+  const getAchievementStats = (player) => ({
+    ...player,
+    missedPredictions: Math.max(0, finishedMatches.length - player.totalPredictions),
+    rankPosition: ranking.findIndex(r => r.id === player.id) + 1,
+    finishedMatches: finishedMatches.length
+  })
 
-    return {
-      ...player,
-      missedPredictions: Math.max(0, missedPredictions),
-      rankPosition,
-      finishedMatches: finishedCount
-    }
-  }
-
-  if (loading) return <div className="loading" style={{ minHeight: '60vh' }}><div className="loading-spinner" /></div>
+  if (loading) return (
+    <div className="loading" style={{ minHeight: '60vh' }}>
+      <div className="loading-spinner" />
+    </div>
+  )
 
   return (
     <div className="animate-fade-in">
+      {/* Indicador actualización */}
+      {updateFlash && (
+        <div style={{
+          position: 'fixed', top: '12px', left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--success)', color: 'white',
+          padding: '6px 16px', borderRadius: '20px',
+          fontSize: '12px', fontWeight: '700',
+          zIndex: 9998, animation: 'slideUp 0.3s ease-out',
+          boxShadow: '0 4px 12px rgba(16,185,129,0.4)'
+        }}>
+          🔄 Ranking actualizado
+        </div>
+      )}
+
       <div className="page-header">
         <h1>🏆 Ranking Familiar</h1>
         <p>¿Quién es el mejor pronosticador?</p>
@@ -82,7 +108,7 @@ const Ranking = () => {
         </button>
       </div>
 
-      {/* ===== RANKING ===== */}
+      {/* RANKING */}
       {view === 'ranking' && (
         <>
           <RankingTable ranking={ranking} />
@@ -91,27 +117,25 @@ const Ranking = () => {
               📋 Sistema de puntos
             </h4>
             <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div className="flex-between">
-                <span>⭐ Resultado exacto</span>
-                <span style={{ fontWeight: '700', color: 'var(--secondary)' }}>+{settings.pointsExact} pts</span>
-              </div>
-              <div className="flex-between">
-                <span>✅ Acertar ganador/empate</span>
-                <span style={{ fontWeight: '700', color: 'var(--success)' }}>+{settings.pointsCorrect} pts</span>
-              </div>
-              <div className="flex-between">
-                <span>🔥 Bonus racha ({settings.bonusStreak} aciertos)</span>
-                <span style={{ fontWeight: '700', color: 'var(--warning)' }}>+{settings.pointsBonus} pts</span>
-              </div>
+              {[
+                { label: '⭐ Resultado exacto', val: `+${settings.pointsExact} pts`, color: 'var(--secondary)' },
+                { label: '✅ Acertar ganador/empate', val: `+${settings.pointsCorrect} pts`, color: 'var(--success)' },
+                { label: `🔥 Bonus racha (${settings.bonusStreak} aciertos)`, val: `+${settings.pointsBonus} pts`, color: 'var(--warning)' },
+              ].map(item => (
+                <div key={item.label} className="flex-between">
+                  <span>{item.label}</span>
+                  <span style={{ fontWeight: '700', color: item.color }}>{item.val}</span>
+                </div>
+              ))}
             </div>
           </div>
         </>
       )}
 
-      {/* ===== DETALLE ===== */}
+      {/* DETALLE */}
       {view === 'stats' && (
         <div>
-          {ranking.map((player) => {
+          {ranking.map(player => {
             const preds = allPredictions[player.id] || []
             return (
               <div key={player.id} className="card" style={{ marginBottom: '16px' }}>
@@ -135,9 +159,9 @@ const Ranking = () => {
                 </div>
 
                 <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px',
-                  marginTop: '12px', padding: '12px', background: 'var(--bg-dark)',
-                  borderRadius: 'var(--radius-sm)'
+                  display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
+                  gap: '8px', marginTop: '12px', padding: '12px',
+                  background: 'var(--bg-dark)', borderRadius: 'var(--radius-sm)'
                 }}>
                   {[
                     { val: player.exactPredictions, label: 'EXACTOS', color: 'var(--secondary)' },
@@ -163,10 +187,13 @@ const Ranking = () => {
                       return (
                         <div key={match.id} style={{
                           display: 'flex', alignItems: 'center', gap: '6px',
-                          padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: '12px'
+                          padding: '6px 0', borderBottom: '1px solid var(--border)',
+                          fontSize: '12px'
                         }}>
                           <span>{match.homeFlag}</span>
-                          <span style={{ color: 'var(--text-muted)' }}>{match.homeScore}-{match.awayScore}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            {match.homeScore}-{match.awayScore}
+                          </span>
                           <span>{match.awayFlag}</span>
                           <span style={{ flex: 1 }} />
                           {pred ? (
@@ -174,7 +201,8 @@ const Ranking = () => {
                               <span style={{ color: 'var(--text-secondary)' }}>
                                 {pred.homeScore}-{pred.awayScore}
                               </span>
-                              <span className={`points-earned ${points?.type}`} style={{ fontSize: '11px' }}>
+                              <span className={`points-earned ${points?.type}`}
+                                style={{ fontSize: '11px' }}>
                                 {points?.type === 'exact' ? `⭐+${points.points}` :
                                  points?.type === 'correct' ? `✅+${points.points}` : '❌'}
                               </span>
@@ -193,17 +221,15 @@ const Ranking = () => {
         </div>
       )}
 
-      {/* ===== LOGROS ===== */}
+      {/* LOGROS */}
       {view === 'achievements' && (
         <div>
-          {/* Selector de jugador */}
           <div style={{
             display: 'flex', gap: '8px', marginBottom: '16px',
             justifyContent: 'center'
           }}>
             {ranking.map(player => (
-              <div
-                key={player.id}
+              <div key={player.id}
                 onClick={() => setSelectedAchievementPlayer(player)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -212,11 +238,9 @@ const Ranking = () => {
                     ? 'var(--bg-card-hover)' : 'var(--bg-card)',
                   border: selectedAchievementPlayer?.id === player.id
                     ? '2px solid var(--secondary)' : '2px solid var(--border)',
-                  borderRadius: 'var(--radius)',
-                  cursor: 'pointer',
+                  borderRadius: 'var(--radius)', cursor: 'pointer',
                   transition: 'all 0.2s ease'
-                }}
-              >
+                }}>
                 <span style={{ fontSize: '24px' }}>{player.emoji}</span>
                 <span style={{
                   fontSize: '10px', fontWeight: '600',
@@ -229,7 +253,6 @@ const Ranking = () => {
             ))}
           </div>
 
-          {/* Logros del jugador seleccionado */}
           {selectedAchievementPlayer && (
             <div className="animate-fade-in">
               <div style={{
@@ -242,10 +265,10 @@ const Ranking = () => {
                   {selectedAchievementPlayer.name}
                 </h3>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  {selectedAchievementPlayer.totalPoints} puntos · {selectedAchievementPlayer.totalPredictions} predicciones
+                  {selectedAchievementPlayer.totalPoints} puntos ·{' '}
+                  {selectedAchievementPlayer.totalPredictions} predicciones
                 </p>
               </div>
-
               <Achievements
                 stats={getAchievementStats(selectedAchievementPlayer)}
                 showAll={true}
