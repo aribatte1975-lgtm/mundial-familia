@@ -267,11 +267,13 @@ export const calculatePoints = (prediction, match, settings) => {
 // =============================================
 
 export const getRanking = async () => {
-  const [users, matches, predictions, settings] = await Promise.all([
+  const [users, matches, predictions, settings, specialPreds, specialResults] = await Promise.all([
     getUsers(),
     getMatches(),
     getPredictions(),
-    getSettings()
+    getSettings(),
+    getSpecialPredictions(),
+    getSpecialResults()
   ])
 
   const finished = matches.filter(m => m.status === 'finished')
@@ -285,39 +287,46 @@ export const getRanking = async () => {
     let tempStreak = 0
     let currentStreak = 0
 
-    const userPreds = predictions
+    predictions
       .filter(p => p.userId === user.id)
       .sort((a, b) => {
         const ma = matches.find(m => m.id === a.matchId)
         const mb = matches.find(m => m.id === b.matchId)
         return new Date(ma?.datetime || 0) - new Date(mb?.datetime || 0)
       })
+      .forEach(pred => {
+        const match = finished.find(m => m.id === pred.matchId)
+        if (!match) return
+        const result = calculatePoints(pred, match, settings)
+        if (!result) return
+        totalPoints += result.points
+        if (result.type === 'exact') { exactPredictions++; tempStreak++ }
+        else if (result.type === 'correct') { correctPredictions++; tempStreak++ }
+        else { wrongPredictions++; tempStreak = 0 }
+        if (tempStreak > bestStreak) bestStreak = tempStreak
+        currentStreak = tempStreak
+      })
 
-    userPreds.forEach(pred => {
-      const match = finished.find(m => m.id === pred.matchId)
-      if (!match) return
-
-      const result = calculatePoints(pred, match, settings)
-      if (!result) return
-
-      totalPoints += result.points
-
-      if (result.type === 'exact') { exactPredictions++; tempStreak++ }
-      else if (result.type === 'correct') { correctPredictions++; tempStreak++ }
-      else { wrongPredictions++; tempStreak = 0 }
-
-      if (tempStreak > bestStreak) bestStreak = tempStreak
-      currentStreak = tempStreak
-    })
-
+    // Bonus racha
     const bonusPoints = Math.floor(bestStreak / settings.bonusStreak) * settings.pointsBonus
     totalPoints += bonusPoints
+
+    // Puntos especiales (campeón, goleador, etc.)
+    let specialPoints = 0
+    const userSpecialPreds = specialPreds.filter(p => p.userId === user.id)
+    userSpecialPreds.forEach(pred => {
+      const result = specialResults.find(r => r.type === pred.type)
+      if (result && pred.value.toLowerCase() === result.value.toLowerCase()) {
+        specialPoints += result.points
+      }
+    })
+    totalPoints += specialPoints
 
     return {
       ...user, totalPoints, exactPredictions, correctPredictions,
       wrongPredictions,
       totalPredictions: exactPredictions + correctPredictions + wrongPredictions,
-      currentStreak, bestStreak, bonusPoints
+      currentStreak, bestStreak, bonusPoints, specialPoints
     }
   }).sort((a, b) => b.totalPoints - a.totalPoints)
 }
@@ -342,6 +351,126 @@ export const getSettings = async () => {
     pointsBonus: data.points_bonus,
     bonusStreak: data.bonus_streak
   }
+}
+
+// =============================================
+// PREDICCIONES ESPECIALES (Campeón, Goleador, etc.)
+// =============================================
+
+export const getSpecialPredictions = async () => {
+  const { data, error } = await supabase
+    .from('special_predictions')
+    .select('*')
+  if (error) { console.error('getSpecialPredictions:', error); return [] }
+  return data.map(p => ({
+    id: p.id,
+    userId: p.user_id,
+    type: p.prediction_type,
+    value: p.value,
+    flag: p.flag,
+    createdAt: p.created_at
+  }))
+}
+
+export const getSpecialPredictionsByUser = async (userId) => {
+  const { data, error } = await supabase
+    .from('special_predictions')
+    .select('*')
+    .eq('user_id', userId)
+  if (error) { console.error('getSpecialPredictionsByUser:', error); return [] }
+  return data.map(p => ({
+    id: p.id,
+    userId: p.user_id,
+    type: p.prediction_type,
+    value: p.value,
+    flag: p.flag
+  }))
+}
+
+export const saveSpecialPrediction = async (userId, type, value, flag) => {
+  const { error } = await supabase
+    .from('special_predictions')
+    .upsert({
+      user_id: userId,
+      prediction_type: type,
+      value: value,
+      flag: flag || '🏳️',
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: 'user_id,prediction_type'
+    })
+  if (error) { console.error('saveSpecialPrediction:', error); return { error: error.message } }
+  return { success: true }
+}
+
+export const getSpecialResults = async () => {
+  const { data, error } = await supabase
+    .from('special_results')
+    .select('*')
+  if (error) { console.error('getSpecialResults:', error); return [] }
+  return data.map(r => ({
+    id: r.id,
+    type: r.prediction_type,
+    value: r.value,
+    flag: r.flag,
+    points: r.points
+  }))
+}
+
+export const saveSpecialResult = async (type, value, flag, points) => {
+  const { error } = await supabase
+    .from('special_results')
+    .upsert({
+      prediction_type: type,
+      value: value,
+      flag: flag || '🏳️',
+      points: points
+    }, {
+      onConflict: 'prediction_type'
+    })
+  if (error) { console.error('saveSpecialResult:', error); return { error: error.message } }
+  return { success: true }
+}
+
+// Calcular puntos especiales para el ranking
+export const getSpecialPoints = async (userId) => {
+  const [predictions, results] = await Promise.all([
+    getSpecialPredictionsByUser(userId),
+    getSpecialResults()
+  ])
+
+  let totalSpecialPoints = 0
+  const details = []
+
+  predictions.forEach(pred => {
+    const result = results.find(r => r.type === pred.type)
+    if (result && pred.value.toLowerCase() === result.value.toLowerCase()) {
+      totalSpecialPoints += result.points
+      details.push({ type: pred.type, points: result.points, correct: true })
+    } else if (result) {
+      details.push({ type: pred.type, points: 0, correct: false })
+    }
+  })
+
+  return { totalSpecialPoints, details }
+}
+
+// Contar partidos pendientes de predicción
+export const getPendingPredictionsCount = async (userId) => {
+  const [matches, predictions] = await Promise.all([
+    getMatches(),
+    getPredictionsByUser(userId)
+  ])
+
+  const now = new Date()
+  const upcoming = matches.filter(m =>
+    m.status === 'upcoming' && new Date(m.datetime) > now
+  )
+
+  const predMatchIds = predictions.map(p => p.matchId)
+  const pending = upcoming.filter(m => !predMatchIds.includes(m.id))
+
+  return pending.length
 }
 
 export const updateSettings = async (updates) => {

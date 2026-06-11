@@ -10,17 +10,15 @@ import Matches from './pages/Matches'
 import Predictions from './pages/Predictions'
 import Ranking from './pages/Ranking'
 import Admin from './pages/Admin'
+import Special from './pages/Special'
 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [splashReady, setSplashReady] = useState(false)
 
   useEffect(() => {
-    // Solo mostrar splash la primera vez o después de cerrar sesión
     const hasSeenSplash = sessionStorage.getItem('splash_shown')
-    if (hasSeenSplash) {
-      setShowSplash(false)
-    }
+    if (hasSeenSplash) setShowSplash(false)
     setSplashReady(true)
   }, [])
 
@@ -34,20 +32,18 @@ function App() {
   return (
     <>
       {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
-
       <BrowserRouter>
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
+              <ProtectedRoute><Layout /></ProtectedRoute>
             }>
               <Route index element={<Home />} />
               <Route path="matches" element={<Matches />} />
               <Route path="predictions" element={<Predictions />} />
               <Route path="ranking" element={<Ranking />} />
+              <Route path="special" element={<Special />} />
               <Route path="admin" element={<Admin />} />
             </Route>
             <Route path="*" element={<Navigate to="/" />} />
