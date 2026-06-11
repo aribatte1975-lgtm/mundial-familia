@@ -6,64 +6,8 @@ import {
 } from '../lib/supabase'
 import { useRealtime } from '../hooks/useRealtime'
 import { Trophy, Lock, Check, Eye, EyeOff } from 'lucide-react'
+import { TEAMS } from '../data/teams'
 
-const TEAMS = [
-  { name: 'Argentina', flag: '🇦🇷' },
-  { name: 'Brasil', flag: '🇧🇷' },
-  { name: 'Francia', flag: '🇫🇷' },
-  { name: 'España', flag: '🇪🇸' },
-  { name: 'Alemania', flag: '🇩🇪' },
-  { name: 'Inglaterra', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
-  { name: 'Portugal', flag: '🇵🇹' },
-  { name: 'Países Bajos', flag: '🇳🇱' },
-  { name: 'Bélgica', flag: '🇧🇪' },
-  { name: 'Italia', flag: '🇮🇹' },
-  { name: 'Croacia', flag: '🇭🇷' },
-  { name: 'Uruguay', flag: '🇺🇾' },
-  { name: 'Colombia', flag: '🇨🇴' },
-  { name: 'México', flag: '🇲🇽' },
-  { name: 'Estados Unidos', flag: '🇺🇸' },
-  { name: 'Canadá', flag: '🇨🇦' },
-  { name: 'Japón', flag: '🇯🇵' },
-  { name: 'Corea del Sur', flag: '🇰🇷' },
-  { name: 'Australia', flag: '🇦🇺' },
-  { name: 'Marruecos', flag: '🇲🇦' },
-  { name: 'Senegal', flag: '🇸🇳' },
-  { name: 'Nigeria', flag: '🇳🇬' },
-  { name: 'Egipto', flag: '🇪🇬' },
-  { name: 'Ghana', flag: '🇬🇭' },
-  { name: 'Suiza', flag: '🇨🇭' },
-  { name: 'Dinamarca', flag: '🇩🇰' },
-  { name: 'Suecia', flag: '🇸🇪' },
-  { name: 'Noruega', flag: '🇳🇴' },
-  { name: 'Austria', flag: '🇦🇹' },
-  { name: 'Turquía', flag: '🇹🇷' },
-  { name: 'Serbia', flag: '🇷🇸' },
-  { name: 'Ecuador', flag: '🇪🇨' },
-  { name: 'Paraguay', flag: '🇵🇾' },
-  { name: 'Chile', flag: '🇨🇱' },
-  { name: 'Irán', flag: '🇮🇷' },
-  { name: 'Arabia Saudita', flag: '🇸🇦' },
-  { name: 'Qatar', flag: '🇶🇦' },
-  { name: 'Panamá', flag: '🇵🇦' },
-  { name: 'Costa Rica', flag: '🇨🇷' },
-  { name: 'Túnez', flag: '🇹🇳' },
-  { name: 'Argelia', flag: '🇩🇿' },
-  { name: 'Escocia', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
-  { name: 'Haití', flag: '🇭🇹' },
-  { name: 'Curazao', flag: '🇨🇼' },
-  { name: 'Bosnia', flag: '🇧🇦' },
-  { name: 'Uzbekistán', flag: '🇺🇿' },
-  { name: 'Irak', flag: '🇮🇶' },
-  { name: 'Jordania', flag: '🇯🇴' },
-  { name: 'RD Congo', flag: '🇨🇩' },
-  { name: 'Cabo Verde', flag: '🇨🇻' },
-  { name: 'Nueva Zelanda', flag: '🇳🇿' },
-  { name: 'Rumanía', flag: '🇷🇴' },
-  { name: 'Sudáfrica', flag: '🇿🇦' },
-  { name: 'Rep. Checa', flag: '🇨🇿' },
-  { name: 'China', flag: '🇨🇳' },
-]
 
 const SPECIAL_TYPES = [
   {
@@ -205,7 +149,7 @@ const Special = () => {
         <p>
           {isLocked
             ? '🔒 Las predicciones están cerradas'
-            : '¡Predice antes del 11 de junio!'}
+            : '¡Predice antes del 15 de junio!'}
         </p>
       </div>
 
