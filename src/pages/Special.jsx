@@ -91,10 +91,10 @@ const SPECIAL_TYPES = [
     useTeams: true
   },
   {
-    type: 'spain_result',
-    icon: '🇪🇸',
-    title: '¿Hasta dónde llega España?',
-    description: 'Elige en qué fase se eliminará España',
+    type: 'argentina_result',
+    icon: '🇦🇷',
+    title: '¿Hasta dónde llega Argentina?',
+    description: 'Elige en qué fase se eliminará Argentina',
     points: 10,
     useTeams: false,
     options: [
@@ -120,7 +120,7 @@ const SPECIAL_TYPES = [
 ]
 
 // Fecha límite: antes del primer partido
-const DEADLINE = new Date('2026-06-11T18:00:00Z')
+const DEADLINE = new Date('2026-06-15T22:00:00Z')
 
 const Special = () => {
   const { user } = useAuth()
@@ -220,7 +220,7 @@ const Special = () => {
           textAlign: 'center'
         }}>
           <span style={{ fontSize: '13px', color: 'var(--secondary)' }}>
-            ⏰ Se cierran al empezar el Mundial (11 junio 2026)
+            ⏰ Se cierran al empezar el Mundial (15 junio 2026)
           </span>
         </div>
       )}
