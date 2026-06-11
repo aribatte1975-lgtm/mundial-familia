@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { getRanking, getMatches, getPredictionsByUser, calculatePoints, getSettings } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import RankingTable from '../components/RankingTable'
-import { Trophy, BarChart3 } from 'lucide-react'
+import Achievements from '../components/Achievements'
+import { Trophy, BarChart3, Award } from 'lucide-react'
 
 const Ranking = () => {
   const { user } = useAuth()
@@ -10,9 +11,11 @@ const Ranking = () => {
   const [view, setView] = useState('ranking')
   const [selectedPlayer, setSelectedPlayer] = useState(null)
   const [finishedMatches, setFinishedMatches] = useState([])
+  const [allMatches, setAllMatches] = useState([])
   const [allPredictions, setAllPredictions] = useState({})
   const [settings, setSettings] = useState({ pointsExact: 5, pointsCorrect: 3 })
   const [loading, setLoading] = useState(true)
+  const [selectedAchievementPlayer, setSelectedAchievementPlayer] = useState(null)
 
   useEffect(() => { loadData() }, [])
 
@@ -20,14 +23,16 @@ const Ranking = () => {
     setLoading(true)
     const [r, m, s] = await Promise.all([getRanking(), getMatches(), getSettings()])
     setRanking(r)
+    setAllMatches(m)
     setFinishedMatches(m.filter(match => match.status === 'finished'))
     setSettings(s)
+    // Por defecto mostrar logros del usuario actual
+    setSelectedAchievementPlayer(r.find(p => p.id === user.id))
     setLoading(false)
   }
 
   const loadPlayerPredictions = async (playerId) => {
     if (allPredictions[playerId]) return
-    const { getPredictionsByUser } = await import('../lib/supabase')
     const preds = await getPredictionsByUser(playerId)
     setAllPredictions(prev => ({ ...prev, [playerId]: preds }))
   }
@@ -36,6 +41,21 @@ const Ranking = () => {
     if (selectedPlayer === playerId) { setSelectedPlayer(null); return }
     setSelectedPlayer(playerId)
     await loadPlayerPredictions(playerId)
+  }
+
+  // Calcular stats extra para logros
+  const getAchievementStats = (player) => {
+    const finishedCount = finishedMatches.length
+    const predCount = player.totalPredictions
+    const missedPredictions = finishedCount - predCount
+    const rankPosition = ranking.findIndex(r => r.id === player.id) + 1
+
+    return {
+      ...player,
+      missedPredictions: Math.max(0, missedPredictions),
+      rankPosition,
+      finishedMatches: finishedCount
+    }
   }
 
   if (loading) return <div className="loading" style={{ minHeight: '60vh' }}><div className="loading-spinner" /></div>
@@ -48,15 +68,22 @@ const Ranking = () => {
       </div>
 
       <div className="tabs">
-        <button className={`tab ${view === 'ranking' ? 'active' : ''}`} onClick={() => setView('ranking')}>
+        <button className={`tab ${view === 'ranking' ? 'active' : ''}`}
+          onClick={() => setView('ranking')}>
           <Trophy size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Ranking
         </button>
-        <button className={`tab ${view === 'stats' ? 'active' : ''}`} onClick={() => setView('stats')}>
+        <button className={`tab ${view === 'stats' ? 'active' : ''}`}
+          onClick={() => setView('stats')}>
           <BarChart3 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Detalle
+        </button>
+        <button className={`tab ${view === 'achievements' ? 'active' : ''}`}
+          onClick={() => setView('achievements')}>
+          <Award size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Logros
         </button>
       </div>
 
-      {view === 'ranking' ? (
+      {/* ===== RANKING ===== */}
+      {view === 'ranking' && (
         <>
           <RankingTable ranking={ranking} />
           <div className="card mt-2" style={{ padding: '16px' }}>
@@ -79,7 +106,10 @@ const Ranking = () => {
             </div>
           </div>
         </>
-      ) : (
+      )}
+
+      {/* ===== DETALLE ===== */}
+      {view === 'stats' && (
         <div>
           {ranking.map((player) => {
             const preds = allPredictions[player.id] || []
@@ -160,6 +190,68 @@ const Ranking = () => {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ===== LOGROS ===== */}
+      {view === 'achievements' && (
+        <div>
+          {/* Selector de jugador */}
+          <div style={{
+            display: 'flex', gap: '8px', marginBottom: '16px',
+            justifyContent: 'center'
+          }}>
+            {ranking.map(player => (
+              <div
+                key={player.id}
+                onClick={() => setSelectedAchievementPlayer(player)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  gap: '4px', padding: '10px 14px',
+                  background: selectedAchievementPlayer?.id === player.id
+                    ? 'var(--bg-card-hover)' : 'var(--bg-card)',
+                  border: selectedAchievementPlayer?.id === player.id
+                    ? '2px solid var(--secondary)' : '2px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span style={{ fontSize: '24px' }}>{player.emoji}</span>
+                <span style={{
+                  fontSize: '10px', fontWeight: '600',
+                  color: selectedAchievementPlayer?.id === player.id
+                    ? 'var(--secondary)' : 'var(--text-muted)'
+                }}>
+                  {player.name}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Logros del jugador seleccionado */}
+          {selectedAchievementPlayer && (
+            <div className="animate-fade-in">
+              <div style={{
+                textAlign: 'center', marginBottom: '16px', padding: '12px',
+                background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--border)'
+              }}>
+                <span style={{ fontSize: '36px' }}>{selectedAchievementPlayer.emoji}</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '700', marginTop: '4px' }}>
+                  {selectedAchievementPlayer.name}
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {selectedAchievementPlayer.totalPoints} puntos · {selectedAchievementPlayer.totalPredictions} predicciones
+                </p>
+              </div>
+
+              <Achievements
+                stats={getAchievementStats(selectedAchievementPlayer)}
+                showAll={true}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
