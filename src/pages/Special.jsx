@@ -7,6 +7,7 @@ import {
 import { useRealtime } from '../hooks/useRealtime'
 import { Trophy, Lock, Check, Eye, EyeOff } from 'lucide-react'
 import { TEAMS } from '../data/teams'
+import { TOP_SCORERS } from '../data/topScorers'
 
 
 const SPECIAL_TYPES = [
@@ -25,6 +26,15 @@ const SPECIAL_TYPES = [
     description: 'Elige quién será el subcampeón',
     points: 10,
     useTeams: true
+  },
+  {
+    type: 'top_scorer',
+    icon: '👟',
+    title: 'Goleador del Mundial',
+    description: 'Elige quién será el máximo goleador del torneo',
+    points: 15,
+    useTeams: false,
+    useScorers: true   // ← nuevo flag para usar la lista de goleadores
   },
   {
     type: 'surprise',
@@ -316,6 +326,74 @@ const Special = () => {
                               )}
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Selector de goleadores */}
+                {special.useScorers && (
+                  <>
+                    <button
+                      className={`btn ${myPred ? 'btn-secondary' : 'btn-primary'} btn-small`}
+                      onClick={() => {
+                        setShowSearch(showSearch === special.type ? null : special.type)
+                        setSearchTerm('')
+                      }}
+                      disabled={saving === special.type}
+                    >
+                      {myPred ? '✏️ Cambiar goleador' : '👟 Elegir goleador'}
+                    </button>
+
+                    {showSearch === special.type && (
+                      <div className="animate-slide-up" style={{ marginTop: '10px' }}>
+                        <input
+                          className="input"
+                          placeholder="🔍 Buscar jugador..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          autoFocus
+                        />
+                        <div style={{
+                          maxHeight: '250px', overflowY: 'auto',
+                          marginTop: '8px', borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border)'
+                        }}>
+                          {TOP_SCORERS
+                            .filter(p =>
+                              p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              p.team.toLowerCase().includes(searchTerm.toLowerCase())
+                            )
+                            .map(player => (
+                              <div
+                                key={player.name}
+                                onClick={() => handleSave(special.type, player.name, player.flag)}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: '10px',
+                                  padding: '10px 12px',
+                                  borderBottom: '1px solid var(--border)',
+                                  cursor: 'pointer',
+                                  background: myPred?.value === player.name
+                                    ? 'rgba(212,168,67,0.1)' : 'var(--bg-card)',
+                                  transition: 'background 0.2s'
+                                }}
+                              >
+                                <span style={{ fontSize: '24px' }}>{player.flag}</span>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '14px', fontWeight: '600' }}>
+                                    {player.name}
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    {player.team}
+                                  </div>
+                                </div>
+                                {myPred?.value === player.name && (
+                                  <Check size={16} color="var(--secondary)" />
+                                )}
+                              </div>
+                            ))
+                          }
                         </div>
                       </div>
                     )}
