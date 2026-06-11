@@ -937,3 +937,20 @@ body {
     border-right: 1px solid var(--border);
   }
 }
+
+/* ===== SPLASH SCREEN ===== */
+@keyframes float {
+  0%, 100% { 
+    transform: translateY(0) rotate(0deg); 
+    opacity: 0.6; 
+  }
+  50% { 
+    transform: translateY(-20px) rotate(180deg); 
+    opacity: 0.3; 
+  }
+}
+
+@keyframes loadBar {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
