@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'  // ← agregar useCallback
 import {
   getRanking, getMatches, getPredictionsByUser,
   calculatePoints, getSettings
@@ -21,39 +21,56 @@ const Ranking = () => {
   const [selectedAchievementPlayer, setSelectedAchievementPlayer] = useState(null)
   const [updateFlash, setUpdateFlash] = useState(false)
 
-  // Tiempo real en matches y predictions
+  // ✅ useCallback para estabilizar la función y evitar recreaciones infinitas
+  const loadData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true)
+    try {
+      const [r, m, s] = await Promise.all([getRanking(), getMatches(), getSettings()])
+      setRanking(r)
+      setFinishedMatches(m.filter(match => match.status === 'finished'))
+      setSettings(s)
+      setSelectedAchievementPlayer(prev =>
+        prev ? r.find(p => p.id === prev.id) : r.find(p => p.id === user?.id)
+      )
+    } catch (error) {
+      console.error('Error cargando datos del ranking:', error)
+    } finally {
+      if (showLoading) setLoading(false)
+    }
+  }, [user?.id])  // ← solo se recrea si cambia el usuario
+
+  // ✅ Realtime - escuchar cambios en matches
   useRealtime('matches', () => {
     setUpdateFlash(true)
     setTimeout(() => setUpdateFlash(false), 2000)
     loadData(false)
   })
 
+  // ✅ Realtime - escuchar cambios en predictions
   useRealtime('predictions', () => {
     loadData(false)
   })
 
-  useEffect(() => { loadData(true) }, [])
-
-  const loadData = async (showLoading = true) => {
-    if (showLoading) setLoading(true)
-    const [r, m, s] = await Promise.all([getRanking(), getMatches(), getSettings()])
-    setRanking(r)
-    setFinishedMatches(m.filter(match => match.status === 'finished'))
-    setSettings(s)
-    setSelectedAchievementPlayer(prev =>
-      prev ? r.find(p => p.id === prev.id) : r.find(p => p.id === user.id)
-    )
-    if (showLoading) setLoading(false)
-  }
+  // ✅ Carga inicial
+  useEffect(() => {
+    loadData(true)
+  }, [loadData])
 
   const loadPlayerPredictions = async (playerId) => {
     if (allPredictions[playerId]) return
-    const preds = await getPredictionsByUser(playerId)
-    setAllPredictions(prev => ({ ...prev, [playerId]: preds }))
+    try {
+      const preds = await getPredictionsByUser(playerId)
+      setAllPredictions(prev => ({ ...prev, [playerId]: preds }))
+    } catch (error) {
+      console.error('Error cargando predicciones:', error)
+    }
   }
 
   const handleSelectPlayer = async (playerId) => {
-    if (selectedPlayer === playerId) { setSelectedPlayer(null); return }
+    if (selectedPlayer === playerId) {
+      setSelectedPlayer(null)
+      return
+    }
     setSelectedPlayer(playerId)
     await loadPlayerPredictions(playerId)
   }
@@ -132,7 +149,7 @@ const Ranking = () => {
         </>
       )}
 
-      {/* DETALLE */}
+      {/* DETALLE - sin cambios */}
       {view === 'stats' && (
         <div>
           {ranking.map(player => {
@@ -221,7 +238,7 @@ const Ranking = () => {
         </div>
       )}
 
-      {/* LOGROS */}
+      {/* LOGROS - sin cambios */}
       {view === 'achievements' && (
         <div>
           <div style={{
