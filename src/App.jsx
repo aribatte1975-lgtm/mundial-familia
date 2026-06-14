@@ -11,6 +11,7 @@ import Predictions from './pages/Predictions'
 import Ranking from './pages/Ranking'
 import Admin from './pages/Admin'
 import Special from './pages/Special'
+import Groups from './pages/Groups'   // ← NUEVO
 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -44,6 +45,7 @@ function App() {
               <Route path="predictions" element={<Predictions />} />
               <Route path="ranking" element={<Ranking />} />
               <Route path="special" element={<Special />} />
+              <Route path="grupos" element={<Groups />} />  {/* ← NUEVO */}
               <Route path="admin" element={<Admin />} />
             </Route>
             <Route path="*" element={<Navigate to="/" />} />

@@ -161,30 +161,113 @@ const Home = () => {
         )}
       </div>
 
-      {/* Alerta partidos hoy sin predicción */}
+      {/* 🚨 Alerta partidos hoy sin predicción — MEJORADA */}
       {todayNoPrediction.length > 0 && (
         <div onClick={() => navigate('/predictions')} style={{
-          background: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(245,158,11,0.15))',
-          border: '1px solid rgba(239,68,68,0.3)',
+          background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(245,158,11,0.15))',
+          border: '2px solid rgba(239,68,68,0.4)',
           borderRadius: 'var(--radius-lg)',
-          padding: '14px 16px',
+          padding: '16px',
           marginBottom: '16px',
           cursor: 'pointer',
-          animation: 'pulse 2s infinite'
+          position: 'relative',
+          overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '24px' }}>⚠️</span>
-            <div>
-              <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--danger)' }}>
-                ¡{todayNoPrediction.length} partido{todayNoPrediction.length > 1 ? 's' : ''} hoy sin predicción!
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Toca aquí para predecir antes de que empiecen
+          {/* Fondo animado */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(90deg, transparent, rgba(239,68,68,0.05), transparent)',
+            backgroundSize: '200% 100%',
+            animation: 'shimmer 2s infinite'
+          }} />
+
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              marginBottom: '10px'
+            }}>
+              <span style={{
+                fontSize: '28px',
+                animation: 'bounceIn 0.6s ease-out'
+              }}>
+                🚨
+              </span>
+              <div>
+                <div style={{
+                  fontWeight: '800', fontSize: '15px',
+                  color: 'var(--danger)'
+                }}>
+                  ¡{todayNoPrediction.length} partido{todayNoPrediction.length > 1 ? 's' : ''} HOY sin predicción!
+                </div>
+                <div style={{
+                  fontSize: '11px', color: 'var(--text-muted)',
+                  marginTop: '2px'
+                }}>
+                  No pierdas puntos — predice antes de que empiecen
+                </div>
               </div>
             </div>
-            <ChevronRight size={18} color="var(--danger)" style={{ marginLeft: 'auto' }} />
+
+            {/* Lista de partidos urgentes */}
+            {todayNoPrediction.slice(0, 3).map(match => {
+              const timeLeft = new Date(match.datetime) - new Date()
+              const hours = Math.floor(timeLeft / 3600000)
+              const mins = Math.floor((timeLeft % 3600000) / 60000)
+              const isVeryUrgent = timeLeft < 3600000 // menos de 1 hora
+
+              return (
+                <div key={match.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '8px 10px',
+                  background: isVeryUrgent
+                    ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.03)',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: '4px',
+                  border: isVeryUrgent
+                    ? '1px solid rgba(239,68,68,0.3)' : 'none'
+                }}>
+                  <span style={{ fontSize: '16px' }}>{match.homeFlag}</span>
+                  <span style={{
+                    fontSize: '12px', fontWeight: '600',
+                    flex: 1, color: 'var(--text-primary)'
+                  }}>
+                    {match.homeTeam} vs {match.awayTeam}
+                  </span>
+                  <span style={{ fontSize: '16px' }}>{match.awayFlag}</span>
+                  <span style={{
+                    fontSize: '10px', fontWeight: '800',
+                    color: isVeryUrgent ? 'var(--danger)' : 'var(--warning)',
+                    background: isVeryUrgent
+                      ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    animation: isVeryUrgent ? 'pulse 1s infinite' : 'none'
+                  }}>
+                    ⏰ {hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}
+                  </span>
+                </div>
+              )
+            })}
+
+            <div style={{
+              marginTop: '10px',
+              padding: '8px',
+              background: 'var(--danger)',
+              borderRadius: 'var(--radius-sm)',
+              textAlign: 'center',
+              fontWeight: '700',
+              fontSize: '13px',
+              color: 'white'
+            }}>
+              ⚡ PREDECIR AHORA
+            </div>
           </div>
         </div>
+      )}
+
+      {/* 🃏 Recordatorio comodines */}
+      {myStats && myStats.totalPredictions > 0 && (
+        <WildcardReminder userId={user.id} navigate={navigate} />
       )}
 
       {/* Stats */}
@@ -388,6 +471,64 @@ const Home = () => {
         fontSize: '11px', color: 'var(--text-muted)'
       }}>
         ⚽ Mundial en Familia 2026 🏆
+      </div>
+    </div>
+  )
+}
+
+const WildcardReminder = ({ userId, navigate }) => {
+  const [remaining, setRemaining] = useState(null)
+
+  useEffect(() => {
+    const load = async () => {
+      // Importar dinámicamente para evitar dependencia circular
+      const { getWildcardsRemaining } = await import('../lib/supabase')
+      const r = await getWildcardsRemaining(userId)
+      setRemaining(r)
+    }
+    load()
+  }, [userId])
+
+  if (remaining === null || remaining === 0) return null
+
+  return (
+    <div
+      onClick={() => navigate('/predictions')}
+      style={{
+        background: 'rgba(212,168,67,0.08)',
+        border: '1px solid rgba(212,168,67,0.2)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '10px 14px',
+        marginBottom: '16px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}
+    >
+      <span style={{ fontSize: '20px' }}>🃏</span>
+      <div style={{ flex: 1 }}>
+        <span style={{
+          fontSize: '12px', fontWeight: '600',
+          color: 'var(--secondary)'
+        }}>
+          {remaining} comodín{remaining !== 1 ? 'es' : ''} x2 disponible{remaining !== 1 ? 's' : ''}
+        </span>
+        <div style={{
+          fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px'
+        }}>
+          ¡Úsalos en partidos que tengas claros!
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '3px' }}>
+        {[0, 1, 2].map(i => (
+          <span key={i} style={{
+            fontSize: '14px',
+            opacity: i < remaining ? 1 : 0.15
+          }}>
+            🃏
+          </span>
+        ))}
       </div>
     </div>
   )

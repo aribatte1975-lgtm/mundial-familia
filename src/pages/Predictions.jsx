@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getMatches, getPrediction, savePrediction } from '../lib/supabase'
+import { getMatches, getPrediction, savePrediction, getWildcardsRemaining } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import MatchCard from '../components/MatchCard'
 import PredictionForm from '../components/PredictionForm'
@@ -10,6 +10,7 @@ const Predictions = () => {
   const { user } = useAuth()
   const [matches, setMatches] = useState([])
   const [predictions, setPredictions] = useState({})
+  const [wildcardsRemaining, setWildcardsRemaining] = useState(3)
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
@@ -34,6 +35,7 @@ const Predictions = () => {
 
     setMatches(active)
 
+    // Cargar predicciones
     const predsMap = {}
     await Promise.all(
       active.map(async match => {
@@ -42,21 +44,34 @@ const Predictions = () => {
       })
     )
     setPredictions(predsMap)
+
+    // Cargar comodines restantes
+    const remaining = await getWildcardsRemaining(user.id)
+    setWildcardsRemaining(remaining)
+
     setLoading(false)
   }
 
-  const handleSave = async (matchId, homeScore, awayScore) => {
+  const handleSave = async (matchId, homeScore, awayScore, isWildcard = false) => {
     setSaving(matchId)
-    const result = await savePrediction(user.id, matchId, homeScore, awayScore)
+    const result = await savePrediction(user.id, matchId, homeScore, awayScore, isWildcard)
     setSaving(null)
     if (result.error) {
       showToast(result.error, 'error')
     } else {
       setPredictions(prev => ({
         ...prev,
-        [matchId]: { userId: user.id, matchId, homeScore, awayScore }
+        [matchId]: { userId: user.id, matchId, homeScore, awayScore, isWildcard }
       }))
-      showToast('¡Predicción guardada! ⚽', 'success')
+      // Actualizar comodines restantes
+      const remaining = await getWildcardsRemaining(user.id)
+      setWildcardsRemaining(remaining)
+      showToast(
+        isWildcard 
+          ? '🃏 ¡Predicción con COMODÍN guardada! x2' 
+          : '¡Predicción guardada! ⚽', 
+        'success'
+      )
     }
   }
 
@@ -68,7 +83,6 @@ const Predictions = () => {
   const upcomingMatches = matches.filter(m => m.status === 'upcoming')
   const lockedMatches = matches.filter(m => m.status === 'locked' || m.status === 'live')
 
-  // Separar partidos de hoy
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000)
@@ -82,7 +96,6 @@ const Predictions = () => {
     return d >= tomorrow
   })
 
-  // Contar sin predicción
   const noPredCount = upcomingMatches.filter(m => !predictions[m.id]).length
 
   if (loading) return <div className="loading" style={{ minHeight: '60vh' }}><div className="loading-spinner" /></div>
@@ -98,6 +111,44 @@ const Predictions = () => {
             ? `⚠️ ${noPredCount} partido${noPredCount > 1 ? 's' : ''} sin predicción`
             : '✅ ¡Todos predichos!'}
         </p>
+      </div>
+
+      {/* 🃏 Indicador de comodines restantes */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '8px', marginBottom: '16px',
+        padding: '10px 16px',
+        background: wildcardsRemaining > 0 
+          ? 'rgba(212,168,67,0.08)' 
+          : 'rgba(239,68,68,0.08)',
+        border: `1px solid ${wildcardsRemaining > 0 
+          ? 'rgba(212,168,67,0.2)' 
+          : 'rgba(239,68,68,0.2)'}`,
+        borderRadius: 'var(--radius-lg)'
+      }}>
+        <span style={{ fontSize: '20px' }}>🃏</span>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+          Comodines x2:
+        </span>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          {[0, 1, 2].map(i => (
+            <span key={i} style={{
+              fontSize: '16px',
+              opacity: i < wildcardsRemaining ? 1 : 0.2,
+              filter: i < wildcardsRemaining ? 'none' : 'grayscale(1)'
+            }}>
+              🃏
+            </span>
+          ))}
+        </div>
+        <span style={{
+          fontSize: '11px', fontWeight: '700',
+          color: wildcardsRemaining > 0 ? 'var(--secondary)' : 'var(--danger)'
+        }}>
+          {wildcardsRemaining > 0 
+            ? `${wildcardsRemaining} disponible${wildcardsRemaining !== 1 ? 's' : ''}` 
+            : '¡Agotados!'}
+        </span>
       </div>
 
       {/* Partidos de HOY */}
@@ -126,14 +177,19 @@ const Predictions = () => {
                     color: 'var(--success)', fontSize: '12px'
                   }}>
                     <Check size={14} />
-                    <span>Ya predijiste: {existing.homeScore} - {existing.awayScore}</span>
+                    <span>
+                      Ya predijiste: {existing.homeScore} - {existing.awayScore}
+                      {existing.isWildcard && ' 🃏x2'}
+                    </span>
                   </div>
                 )}
                 <PredictionForm
                   match={match}
                   initialHome={existing?.homeScore ?? 0}
                   initialAway={existing?.awayScore ?? 0}
-                  onSave={(h, a) => handleSave(match.id, h, a)}
+                  initialWildcard={existing?.isWildcard ?? false}
+                  wildcardsRemaining={wildcardsRemaining}
+                  onSave={(h, a, w) => handleSave(match.id, h, a, w)}
                   disabled={saving === match.id}
                 />
               </MatchCard>
@@ -142,7 +198,7 @@ const Predictions = () => {
         </>
       )}
 
-      {/* Próximos partidos (no hoy) */}
+      {/* Próximos partidos */}
       {futureUpcoming.length > 0 && (
         <>
           <h3 className="section-title mt-2">
@@ -160,14 +216,19 @@ const Predictions = () => {
                     color: 'var(--success)', fontSize: '12px'
                   }}>
                     <Check size={14} />
-                    <span>Ya predijiste: {existing.homeScore} - {existing.awayScore}</span>
+                    <span>
+                      Ya predijiste: {existing.homeScore} - {existing.awayScore}
+                      {existing.isWildcard && ' 🃏x2'}
+                    </span>
                   </div>
                 )}
                 <PredictionForm
                   match={match}
                   initialHome={existing?.homeScore ?? 0}
                   initialAway={existing?.awayScore ?? 0}
-                  onSave={(h, a) => handleSave(match.id, h, a)}
+                  initialWildcard={existing?.isWildcard ?? false}
+                  wildcardsRemaining={wildcardsRemaining}
+                  onSave={(h, a, w) => handleSave(match.id, h, a, w)}
                   disabled={saving === match.id}
                 />
               </MatchCard>
@@ -191,10 +252,20 @@ const Predictions = () => {
                     marginTop: '12px', padding: '10px', background: 'var(--bg-dark)',
                     borderRadius: 'var(--radius-sm)', textAlign: 'center'
                   }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tu predicción: </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Tu predicción: 
+                    </span>
                     <span style={{ fontSize: '18px', fontWeight: '700', color: 'var(--secondary)' }}>
                       {existing.homeScore} - {existing.awayScore}
                     </span>
+                    {existing.isWildcard && (
+                      <div style={{
+                        marginTop: '4px', fontSize: '11px',
+                        fontWeight: '700', color: 'var(--secondary)'
+                      }}>
+                        🃏 Comodín x2 activado
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{

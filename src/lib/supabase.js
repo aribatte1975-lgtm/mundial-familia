@@ -170,6 +170,7 @@ export const getPredictions = async () => {
   return data.map(p => ({
     id: p.id, userId: p.user_id, matchId: p.match_id,
     homeScore: p.home_score, awayScore: p.away_score,
+    isWildcard: p.is_wildcard || false,
     createdAt: p.created_at
   }))
 }
@@ -209,15 +210,28 @@ export const getPrediction = async (userId, matchId) => {
   if (!data) return null
   return {
     id: data.id, userId: data.user_id, matchId: data.match_id,
-    homeScore: data.home_score, awayScore: data.away_score
+    homeScore: data.home_score, awayScore: data.away_score,
+    isWildcard: data.is_wildcard || false
   }
 }
 
-export const savePrediction = async (userId, matchId, homeScore, awayScore) => {
+export const savePrediction = async (userId, matchId, homeScore, awayScore, isWildcard = false) => {
   // Verificar que el partido no haya comenzado
   const match = await getMatchById(matchId)
   if (match && new Date(match.datetime) <= new Date()) {
     return { error: '¡El partido ya comenzó! No puedes predecir.' }
+  }
+
+  // Si quiere usar comodín, verificar que tenga disponibles
+  if (isWildcard) {
+    const used = await getWildcardsUsed(userId)
+    // Verificar si ya tenía comodín en este partido (no contar doble)
+    const existingPred = await getPrediction(userId, matchId)
+    const alreadyWildcard = existingPred?.isWildcard || false
+    
+    if (used >= 3 && !alreadyWildcard) {
+      return { error: '¡Ya usaste tus 3 comodines! 🃏' }
+    }
   }
 
   const { error } = await supabase
@@ -227,6 +241,7 @@ export const savePrediction = async (userId, matchId, homeScore, awayScore) => {
       match_id: matchId,
       home_score: homeScore,
       away_score: awayScore,
+      is_wildcard: isWildcard,
       updated_at: new Date().toISOString()
     }, {
       onConflict: 'user_id,match_id'
@@ -244,10 +259,16 @@ export const calculatePoints = (prediction, match, settings) => {
   if (match.status !== 'finished' || match.homeScore === null) return null
 
   const s = settings || { pointsExact: 5, pointsCorrect: 3 }
+  const multiplier = prediction.isWildcard ? 2 : 1
 
   if (prediction.homeScore === match.homeScore &&
       prediction.awayScore === match.awayScore) {
-    return { points: s.pointsExact, type: 'exact' }
+    return { 
+      points: s.pointsExact * multiplier, 
+      type: 'exact', 
+      isWildcard: prediction.isWildcard,
+      basePoints: s.pointsExact
+    }
   }
 
   const predResult = prediction.homeScore > prediction.awayScore ? 'home'
@@ -256,10 +277,20 @@ export const calculatePoints = (prediction, match, settings) => {
     : match.homeScore < match.awayScore ? 'away' : 'draw'
 
   if (predResult === matchResult) {
-    return { points: s.pointsCorrect, type: 'correct' }
+    return { 
+      points: s.pointsCorrect * multiplier, 
+      type: 'correct',
+      isWildcard: prediction.isWildcard,
+      basePoints: s.pointsCorrect
+    }
   }
 
-  return { points: 0, type: 'wrong' }
+  return { 
+    points: 0, 
+    type: 'wrong',
+    isWildcard: prediction.isWildcard,
+    basePoints: 0
+  }
 }
 
 // =============================================
@@ -492,6 +523,134 @@ export const updateSettings = async (updates) => {
     pointsBonus: data.points_bonus, bonusStreak: data.bonus_streak
   }
 }
+
+
+// =============================================
+// TABLA DE POSICIONES POR GRUPO
+// =============================================
+
+export const getGroupStandings = async () => {
+  const matches = await getMatches()
+  
+  // Solo partidos de fase de grupos finalizados
+  const groupMatches = matches.filter(m => m.stage === 'Fase de Grupos')
+  
+  // Obtener todos los equipos únicos por grupo
+  const groups = {}
+  
+  groupMatches.forEach(match => {
+    const group = match.group // "Grupo A", "Grupo B", etc.
+    if (!groups[group]) groups[group] = {}
+    
+    // Registrar equipo local
+    if (!groups[group][match.homeTeam]) {
+      groups[group][match.homeTeam] = {
+        name: match.homeTeam,
+        flag: match.homeFlag,
+        group,
+        PJ: 0, G: 0, E: 0, P: 0,
+        GF: 0, GC: 0, DIF: 0, PTS: 0
+      }
+    }
+    
+    // Registrar equipo visitante
+    if (!groups[group][match.awayTeam]) {
+      groups[group][match.awayTeam] = {
+        name: match.awayTeam,
+        flag: match.awayFlag,
+        group,
+        PJ: 0, G: 0, E: 0, P: 0,
+        GF: 0, GC: 0, DIF: 0, PTS: 0
+      }
+    }
+    
+    // Solo calcular si el partido terminó
+    if (match.status === 'finished' && 
+        match.homeScore !== null && 
+        match.awayScore !== null) {
+      
+      const home = groups[group][match.homeTeam]
+      const away = groups[group][match.awayTeam]
+      
+      // Partidos jugados
+      home.PJ++
+      away.PJ++
+      
+      // Goles
+      home.GF += match.homeScore
+      home.GC += match.awayScore
+      away.GF += match.awayScore
+      away.GC += match.homeScore
+      
+      // Resultado
+      if (match.homeScore > match.awayScore) {
+        // Gana local
+        home.G++; home.PTS += 3
+        away.P++
+      } else if (match.homeScore < match.awayScore) {
+        // Gana visitante
+        away.G++; away.PTS += 3
+        home.P++
+      } else {
+        // Empate
+        home.E++; home.PTS++
+        away.E++; away.PTS++
+      }
+      
+      // Diferencia de goles
+      home.DIF = home.GF - home.GC
+      away.DIF = away.GF - away.GC
+    }
+  })
+  
+  // Convertir a array ordenado por puntos
+  const result = {}
+  Object.keys(groups).sort().forEach(groupName => {
+    result[groupName] = Object.values(groups[groupName])
+      .sort((a, b) => {
+        if (b.PTS !== a.PTS) return b.PTS - a.PTS  // 1. Puntos
+        if (b.DIF !== a.DIF) return b.DIF - a.DIF  // 2. Diferencia goles
+        return b.GF - a.GF                          // 3. Goles a favor
+      })
+  })
+  
+  return { groups: result, allGroupMatches: groupMatches }
+}
+
+
+// =============================================
+// COMODINES
+// =============================================
+
+export const getWildcardsUsed = async (userId) => {
+  const { data, error } = await supabase
+    .from('predictions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_wildcard', true)
+  if (error) { console.error('getWildcardsUsed:', error); return 0 }
+  return data.length
+}
+
+export const getWildcardsRemaining = async (userId) => {
+  const used = await getWildcardsUsed(userId)
+  return Math.max(0, 3 - used)
+}
+
+export const getAllWildcardsByUser = async (userId) => {
+  const { data, error } = await supabase
+    .from('predictions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_wildcard', true)
+  if (error) { console.error('getAllWildcardsByUser:', error); return [] }
+  return data.map(p => ({
+    id: p.id, userId: p.user_id, matchId: p.match_id,
+    homeScore: p.home_score, awayScore: p.away_score,
+    isWildcard: p.is_wildcard
+  }))
+}
+
 
 // =============================================
 // COMPATIBILIDAD (ya no se usa localStorage)

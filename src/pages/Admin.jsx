@@ -8,57 +8,8 @@ import {
 import { Plus, Trash2, Save, Settings, Users, Calendar, ChevronDown, ChevronUp } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { TEAMS } from '../data/teams'
 
-const COUNTRIES = [
-  { name: 'Argentina', flag: '🇦🇷' },
-  { name: 'Brasil', flag: '🇧🇷' },
-  { name: 'Francia', flag: '🇫🇷' },
-  { name: 'España', flag: '🇪🇸' },
-  { name: 'Alemania', flag: '🇩🇪' },
-  { name: 'Portugal', flag: '🇵🇹' },
-  { name: 'Inglaterra', flag: '🇬🇧' },
-  { name: 'Países Bajos', flag: '🇳🇱' },
-  { name: 'Italia', flag: '🇮🇹' },
-  { name: 'Bélgica', flag: '🇧🇪' },
-  { name: 'Croacia', flag: '🇭🇷' },
-  { name: 'Uruguay', flag: '🇺🇾' },
-  { name: 'Colombia', flag: '🇨🇴' },
-  { name: 'México', flag: '🇲🇽' },
-  { name: 'EE.UU.', flag: '🇺🇸' },
-  { name: 'Canadá', flag: '🇨🇦' },
-  { name: 'Japón', flag: '🇯🇵' },
-  { name: 'Corea del Sur', flag: '🇰🇷' },
-  { name: 'Australia', flag: '🇦🇺' },
-  { name: 'Arabia Saudita', flag: '🇸🇦' },
-  { name: 'Irán', flag: '🇮🇷' },
-  { name: 'Ghana', flag: '🇬🇭' },
-  { name: 'Senegal', flag: '🇸🇳' },
-  { name: 'Camerún', flag: '🇨🇲' },
-  { name: 'Marruecos', flag: '🇲🇦' },
-  { name: 'Nigeria', flag: '🇳🇬' },
-  { name: 'Costa de Marfil', flag: '🇨🇮' },
-  { name: 'Egipto', flag: '🇪🇬' },
-  { name: 'Dinamarca', flag: '🇩🇰' },
-  { name: 'Suiza', flag: '🇨🇭' },
-  { name: 'Turquía', flag: '🇹🇷' },
-  { name: 'Serbia', flag: '🇷🇸' },
-  { name: 'Escocia', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
-  { name: 'Ecuador', flag: '🇪🇨' },
-  { name: 'Costa Rica', flag: '🇨🇷' },
-  { name: 'Panamá', flag: '🇵🇦' },
-  { name: 'Chile', flag: '🇨🇱' },
-  { name: 'Paraguay', flag: '🇵🇾' },
-  { name: 'Venezuela', flag: '🇻🇪' },
-  { name: 'Perú', flag: '🇵🇪' },
-  { name: 'Bolivia', flag: '🇧🇴' },
-  { name: 'Albania', flag: '🇦🇱' },
-  { name: 'Rumanía', flag: '🇷🇴' },
-  { name: 'Ucrania', flag: '🇺🇦' },
-  { name: 'China', flag: '🇨🇳' },
-  { name: 'Uzbekistán', flag: '🇺🇿' },
-  { name: 'Bahréin', flag: '🇧🇭' },
-  { name: 'Indonesia', flag: '🇮🇩' },
-]
 
 const STAGES = [
   'Fase de Grupos',
@@ -230,12 +181,12 @@ const handleUpdateUser = async (userId, field, value) => {
                 <label>Equipo Local</label>
                 <select className="input" value={newMatch.homeTeam}
                   onChange={(e) => {
-                    const c = COUNTRIES.find(c => c.name === e.target.value)
-                    if (c) handleSelectCountry('home', c)
-                  }}>
-                  <option value="">Seleccionar...</option>
-                  {COUNTRIES.map(c => (
-                    <option key={c.name} value={c.name}>{c.flag} {c.name}</option>
+                      const c = TEAMS.find(c => c.name === e.target.value)
+                      if (c) handleSelectCountry('home', c)
+                    }}>
+                    <option value="">Seleccionar...</option>
+                    {TEAMS.map(c => (
+                      <option key={c.name} value={c.name}>{c.flag} {c.name}</option>
                   ))}
                 </select>
               </div>
@@ -244,11 +195,11 @@ const handleUpdateUser = async (userId, field, value) => {
                 <label>Equipo Visitante</label>
                 <select className="input" value={newMatch.awayTeam}
                   onChange={(e) => {
-                    const c = COUNTRIES.find(c => c.name === e.target.value)
+                    const c = TEAMS.find(c => c.name === e.target.value)
                     if (c) handleSelectCountry('away', c)
                   }}>
                   <option value="">Seleccionar...</option>
-                  {COUNTRIES.map(c => (
+                  {TEAMS.map(c => (
                     <option key={c.name} value={c.name}>{c.flag} {c.name}</option>
                   ))}
                 </select>
