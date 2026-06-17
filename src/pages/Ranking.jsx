@@ -1,13 +1,17 @@
-import { useState, useEffect, useCallback } from 'react'  // ← agregar useCallback
+import { useState, useEffect, useCallback } from 'react'  
 import {
   getRanking, getMatches, getPredictionsByUser,
-  calculatePoints, getSettings
+  calculatePoints, getSettings, getPointsEvolution
 } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import RankingTable from '../components/RankingTable'
 import Achievements from '../components/Achievements'
-import { Trophy, BarChart3, Award } from 'lucide-react'
+import { Trophy, BarChart3, Award, TrendingUp } from 'lucide-react'
 import { useRealtime } from '../hooks/useRealtime'
+import {
+  ResponsiveContainer, LineChart, Line,
+  XAxis, YAxis, Tooltip, Legend
+} from 'recharts'
 
 const Ranking = () => {
   const { user } = useAuth()
@@ -20,15 +24,19 @@ const Ranking = () => {
   const [loading, setLoading] = useState(true)
   const [selectedAchievementPlayer, setSelectedAchievementPlayer] = useState(null)
   const [updateFlash, setUpdateFlash] = useState(false)
+  const [evolution, setEvolution] = useState([])
 
   // ✅ useCallback para estabilizar la función y evitar recreaciones infinitas
   const loadData = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
     try {
-      const [r, m, s] = await Promise.all([getRanking(), getMatches(), getSettings()])
+      const [r, m, s, evo] = await Promise.all([
+        getRanking(), getMatches(), getSettings(), getPointsEvolution()
+      ])
       setRanking(r)
       setFinishedMatches(m.filter(match => match.status === 'finished'))
       setSettings(s)
+      setEvolution(evo)
       setSelectedAchievementPlayer(prev =>
         prev ? r.find(p => p.id === prev.id) : r.find(p => p.id === user?.id)
       )
@@ -37,7 +45,7 @@ const Ranking = () => {
     } finally {
       if (showLoading) setLoading(false)
     }
-  }, [user?.id])  // ← solo se recrea si cambia el usuario
+  }, [user?.id])
 
   // ✅ Realtime - escuchar cambios en matches
   useRealtime('matches', () => {
@@ -119,6 +127,10 @@ const Ranking = () => {
           onClick={() => setView('stats')}>
           <BarChart3 size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Detalle
         </button>
+        <button className={`tab ${view === 'evolution' ? 'active' : ''}`}
+          onClick={() => setView('evolution')}>
+          <TrendingUp size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Evolución
+        </button>
         <button className={`tab ${view === 'achievements' ? 'active' : ''}`}
           onClick={() => setView('achievements')}>
           <Award size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Logros
@@ -127,27 +139,58 @@ const Ranking = () => {
 
       {/* RANKING */}
       {view === 'ranking' && (
-        <>
-          <RankingTable ranking={ranking} />
-          <div className="card mt-2" style={{ padding: '16px' }}>
-            <h4 style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-              📋 Sistema de puntos
-            </h4>
-            <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {[
-                { label: '⭐ Resultado exacto', val: `+${settings.pointsExact} pts`, color: 'var(--secondary)' },
-                { label: '✅ Acertar ganador/empate', val: `+${settings.pointsCorrect} pts`, color: 'var(--success)' },
-                { label: `🔥 Bonus racha (${settings.bonusStreak} aciertos)`, val: `+${settings.pointsBonus} pts`, color: 'var(--warning)' },
-              ].map(item => (
-                <div key={item.label} className="flex-between">
-                  <span>{item.label}</span>
-                  <span style={{ fontWeight: '700', color: item.color }}>{item.val}</span>
-                </div>
-              ))}
+      <>
+        <RankingTable ranking={ranking} />
+        <div className="card mt-2" style={{ padding: '16px' }}>
+          <h4 style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            📋 Sistema de puntos
+          </h4>
+
+          <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {[
+              { label: '⭐ Resultado exacto', val: `+${settings.pointsExact} pts`, color: 'var(--secondary)' },
+              { label: '✅ Acertar ganador/empate', val: `+${settings.pointsCorrect} pts`, color: 'var(--success)' },
+              { label: '🃏 Comodín (x2)', val: 'Duplica puntos', color: 'var(--info)' },
+              { label: `🔥 Racha: cada ${settings.bonusStreak} aciertos seguidos`, val: `+${settings.pointsBonus} pts`, color: 'var(--warning)' },
+            ].map(item => (
+              <div key={item.label} className="flex-between">
+                <span>{item.label}</span>
+                <span style={{ fontWeight: '700', color: item.color }}>{item.val}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            marginTop: '10px',
+            padding: '10px',
+            background: 'var(--bg-dark)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '11px',
+            color: 'var(--text-muted)',
+            lineHeight: '1.6'
+          }}>
+            <div style={{ fontWeight: '700', marginBottom: '4px', color: 'var(--text-secondary)' }}>
+              📖 ¿Cómo funciona?
+            </div>
+            <div>
+              ⭐ Predecís 2-1 y sale 2-1 → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact}</b>
+            </div>
+            <div>
+              ✅ Predecís 2-1 y sale 3-0 (acertás ganador) → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b>
+            </div>
+            <div>
+              🃏 Usás comodín y acertás → <b style={{ color: 'var(--info)' }}>puntos x2</b>
+            </div>
+            <div>
+              🔥 Acertás {settings.bonusStreak} seguidos → <b style={{ color: 'var(--warning)' }}>+{settings.pointsBonus} bonus</b> (no se suma cada partido, solo cada {settings.bonusStreak})
+            </div>
+            <div>
+              ❌ Fallás → 0 puntos y se corta la racha
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </>
+    )}
 
       {/* DETALLE - sin cambios */}
       {view === 'stats' && (
@@ -185,6 +228,7 @@ const Ranking = () => {
                     { val: player.correctPredictions, label: 'ACIERTOS', color: 'var(--success)' },
                     { val: player.wrongPredictions, label: 'FALLOS', color: 'var(--danger)' },
                     { val: `🔥${player.bestStreak}`, label: 'RACHA', color: 'var(--warning)' },
+                    { val: `🃏${player.wildcardsUsed || 0}/3`, label: 'COMODÍN', color: 'var(--info)' },
                   ].map(s => (
                     <div key={s.label} style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '18px', fontWeight: '700', color: s.color }}>{s.val}</div>
@@ -235,6 +279,189 @@ const Ranking = () => {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* EVOLUCIÓN */}
+      {view === 'evolution' && (
+        <div>
+          <div className="card" style={{ padding: '16px' }}>
+            <div style={{
+              fontSize: '13px', color: 'var(--text-muted)',
+              marginBottom: '12px', textAlign: 'center'
+            }}>
+              Puntos acumulados partido a partido
+            </div>
+
+            {evolution.length > 0 && evolution[0].data.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart>
+                  <XAxis
+                    dataKey="matchNum"
+                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#374151' }}
+                    type="number"
+                    domain={[1, evolution[0]?.data.length || 1]}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#6B7280' }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#374151' }}
+                    width={35}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null
+                      // Buscar el label del partido
+                      const matchInfo = evolution[0]?.data.find(
+                        d => d.matchNum === label
+                      )
+                      return (
+                        <div style={{
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '10px 14px',
+                          boxShadow: 'var(--shadow-lg)'
+                        }}>
+                          <div style={{
+                            fontSize: '11px', color: 'var(--text-muted)',
+                            marginBottom: '6px'
+                          }}>
+                            Partido {label} {matchInfo?.matchLabel || ''}
+                          </div>
+                          {payload
+                            .sort((a, b) => b.value - a.value)
+                            .map(entry => (
+                              <div key={entry.dataKey} style={{
+                                display: 'flex', alignItems: 'center',
+                                gap: '6px', fontSize: '12px',
+                                marginBottom: '2px'
+                              }}>
+                                <div style={{
+                                  width: '8px', height: '8px',
+                                  borderRadius: '50%',
+                                  background: entry.color
+                                }} />
+                                <span style={{ color: 'var(--text-secondary)' }}>
+                                  {entry.name}
+                                </span>
+                                <span style={{
+                                  marginLeft: 'auto',
+                                  fontWeight: '700',
+                                  color: entry.color
+                                }}>
+                                  {entry.value} pts
+                                </span>
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )
+                    }}
+                  />
+
+                  {evolution.map((player, idx) => {
+                    const colors = ['#D4A843', '#10B981', '#3B82F6', '#EF4444']
+                    return (
+                      <Line
+                        key={player.id}
+                        data={player.data}
+                        dataKey="points"
+                        name={`${player.emoji} ${player.name}`}
+                        stroke={colors[idx % colors.length]}
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{
+                          r: 5,
+                          stroke: colors[idx % colors.length],
+                          strokeWidth: 2,
+                          fill: 'var(--bg-dark)'
+                        }}
+                        animationDuration={1500}
+                        animationEasing="ease-out"
+                      />
+                    )
+                  })}
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{
+                textAlign: 'center', padding: '40px 20px',
+                color: 'var(--text-muted)'
+              }}>
+                <div style={{ fontSize: '36px', marginBottom: '8px' }}>📊</div>
+                <p>Aún no hay partidos finalizados</p>
+              </div>
+            )}
+          </div>
+
+          {/* Leyenda con posición actual */}
+          <div className="card" style={{ padding: '12px 16px' }}>
+            {evolution
+              .sort((a, b) => {
+                const lastA = a.data[a.data.length - 1]?.points || 0
+                const lastB = b.data[b.data.length - 1]?.points || 0
+                return lastB - lastA
+              })
+              .map((player, idx) => {
+                const colors = ['#D4A843', '#10B981', '#3B82F6', '#EF4444']
+                const lastPoints = player.data[player.data.length - 1]?.points || 0
+                const prevPoints = player.data.length > 1
+                  ? player.data[player.data.length - 2]?.points || 0
+                  : 0
+                const diff = lastPoints - prevPoints
+                const color = colors[evolution.findIndex(e => e.id === player.id) % colors.length]
+
+                return (
+                  <div key={player.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '8px 0',
+                    borderBottom: idx < evolution.length - 1
+                      ? '1px solid var(--border)' : 'none'
+                  }}>
+                    <span style={{
+                      fontSize: '12px', fontWeight: '800',
+                      color: idx === 0 ? 'var(--secondary)' : 'var(--text-muted)',
+                      width: '20px'
+                    }}>
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`}
+                    </span>
+                    <div style={{
+                      width: '10px', height: '10px',
+                      borderRadius: '50%',
+                      background: color,
+                      flexShrink: 0
+                    }} />
+                    <span style={{ fontSize: '18px' }}>{player.emoji}</span>
+                    <span style={{
+                      flex: 1, fontSize: '13px', fontWeight: '600'
+                    }}>
+                      {player.name}
+                    </span>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{
+                        fontSize: '16px', fontWeight: '800',
+                        color: color
+                      }}>
+                        {lastPoints}
+                      </span>
+                      {diff > 0 && (
+                        <span style={{
+                          fontSize: '10px', color: 'var(--success)',
+                          marginLeft: '4px', fontWeight: '700'
+                        }}>
+                          +{diff}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            }
+          </div>
         </div>
       )}
 

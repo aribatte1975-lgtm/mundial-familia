@@ -3,13 +3,12 @@ import { useAuth } from '../context/AuthContext'
 import { 
   getMatches, addMatch, updateMatch, deleteMatch,
   getUsers, updateUser, getSettings, updateSettings,
-  loadWorldCupMatches, resetAllData 
+  loadWorldCupMatches, resetAllData, getClassifiedTeams, generateKnockoutMatches 
 } from '../lib/supabase'
-import { Plus, Trash2, Save, Settings, Users, Calendar, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Save, Settings, Users, Calendar, ChevronDown, ChevronUp, Trophy } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { TEAMS } from '../data/teams'
-
 
 const STAGES = [
   'Fase de Grupos',
@@ -139,6 +138,10 @@ const handleUpdateUser = async (userId, field, value) => {
         </button>
         <button className={`tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
           <Settings size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> Config
+        </button>
+        <button className={`tab ${activeTab === 'knockout' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('knockout')}>
+          <Trophy size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> D16
         </button>
       </div>
 
@@ -357,6 +360,14 @@ const handleUpdateUser = async (userId, field, value) => {
           </div>
         </div>
       )}
+      
+      {/* ===== TAB ELIMINATORIAS ===== */}
+      {activeTab === 'knockout' && (
+        <KnockoutTab
+          onToast={showToastMsg}
+          onReload={loadData}
+        />
+      )}
     </div>
   )
 }
@@ -422,6 +433,323 @@ const MatchResultAdmin = ({ match, onUpdateScore, onDelete, onReset }) => {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ===== COMPONENTE TAB ELIMINATORIAS =====
+const KnockoutTab = ({ onToast, onReload }) => {
+  const [classified, setClassified] = useState(null)
+  const [selectedThirds, setSelectedThirds] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [step, setStep] = useState(1) // 1: ver clasificados, 2: elegir terceros, 3: confirmar
+
+  useEffect(() => { loadClassified() }, [])
+
+  const loadClassified = async () => {
+    setLoading(true)
+    const data = await getClassifiedTeams()
+    setClassified(data)
+    setLoading(false)
+  }
+
+  const toggleThird = (letter) => {
+    if (selectedThirds.includes(letter)) {
+      setSelectedThirds(prev => prev.filter(l => l !== letter))
+    } else {
+      if (selectedThirds.length >= 8) {
+        onToast('Solo pueden clasificar 8 terceros', 'error')
+        return
+      }
+      setSelectedThirds(prev => [...prev, letter])
+    }
+  }
+
+  const handleGenerate = async () => {
+    if (selectedThirds.length !== 8) {
+      onToast('Debes seleccionar exactamente 8 terceros', 'error')
+      return
+    }
+
+    if (!confirm(`¿Generar los 16 partidos de Dieciseisavos?\n\nTerceros clasificados: Grupos ${selectedThirds.sort().join(', ')}\n\nEsto creará 16 partidos nuevos.`)) return
+
+    setGenerating(true)
+    const results = await generateKnockoutMatches(selectedThirds, {})
+    setGenerating(false)
+
+    const errors = results.filter(r => r.error)
+    if (errors.length > 0) {
+      onToast(`⚠️ ${errors.length} partidos con error`, 'error')
+    } else {
+      onToast('¡16 partidos de Dieciseisavos generados! 🏆', 'success')
+      onReload()
+    }
+  }
+
+  if (loading) return (
+    <div className="loading" style={{ minHeight: '200px' }}>
+      <div className="loading-spinner" />
+    </div>
+  )
+
+  const groupLetters = ['A','B','C','D','E','F','G','H','I','J','K','L']
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="card" style={{ 
+        background: 'linear-gradient(135deg, rgba(212,168,67,0.1), rgba(139,21,56,0.1))',
+        borderColor: 'rgba(212,168,67,0.3)',
+        marginBottom: '16px'
+      }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>
+          🏆 Generador de Dieciseisavos
+        </h3>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+          Seleccioná los 8 mejores terceros y generá los 16 cruces automáticamente
+        </p>
+      </div>
+
+      {/* Paso 1: Clasificados por grupo */}
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <h4 style={{ 
+          fontSize: '13px', fontWeight: '700', 
+          marginBottom: '12px', color: 'var(--text-secondary)' 
+        }}>
+          📊 Clasificados por Grupo
+        </h4>
+        
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-dark)' }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>Grupo</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--success)' }}>1° Clasificado</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--success)' }}>2° Clasificado</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--warning)' }}>3° (posible)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupLetters.map(letter => {
+                const first = classified.firsts[letter]
+                const second = classified.seconds[letter]
+                const third = classified.thirds.find(t => t.groupLetter === letter)
+                
+                return (
+                  <tr key={letter} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px', fontWeight: '800', color: 'var(--secondary)' }}>
+                      {letter}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      {first ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>{first.flag}</span>
+                          <span style={{ fontSize: '11px' }}>{first.name}</span>
+                          <span style={{ 
+                            fontSize: '9px', color: 'var(--secondary)', 
+                            fontWeight: '700', marginLeft: '2px' 
+                          }}>
+                            {first.PTS}pts
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                          Pendiente
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      {second ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>{second.flag}</span>
+                          <span style={{ fontSize: '11px' }}>{second.name}</span>
+                          <span style={{ 
+                            fontSize: '9px', color: 'var(--secondary)', 
+                            fontWeight: '700', marginLeft: '2px' 
+                          }}>
+                            {second.PTS}pts
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                          Pendiente
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      {third ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>{third.flag}</span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            {third.name}
+                          </span>
+                          <span style={{ 
+                            fontSize: '9px', color: 'var(--warning)', 
+                            fontWeight: '700', marginLeft: '2px' 
+                          }}>
+                            {third.PTS}pts
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                          Pendiente
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Paso 2: Elegir 8 mejores terceros */}
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <h4 style={{ 
+          fontSize: '13px', fontWeight: '700', 
+          marginBottom: '4px', color: 'var(--text-secondary)' 
+        }}>
+          🏅 Elegir 8 Mejores Terceros
+          <span style={{ 
+            marginLeft: '8px', fontSize: '11px',
+            color: selectedThirds.length === 8 ? 'var(--success)' : 'var(--warning)',
+            fontWeight: '700'
+          }}>
+            ({selectedThirds.length}/8)
+          </span>
+        </h4>
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+          Están ordenados por puntos. Seleccioná los 8 que clasificaron.
+        </p>
+
+        {classified.thirds.map((team, idx) => (
+          <div
+            key={team.groupLetter}
+            onClick={() => toggleThird(team.groupLetter)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '10px 12px',
+              marginBottom: '6px',
+              borderRadius: 'var(--radius-sm)',
+              border: selectedThirds.includes(team.groupLetter)
+                ? '2px solid var(--success)' : '1px solid var(--border)',
+              background: selectedThirds.includes(team.groupLetter)
+                ? 'rgba(16,185,129,0.08)' : 'var(--bg-dark)',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            {/* Posición entre los terceros */}
+            <span style={{ 
+              fontSize: '11px', fontWeight: '700', width: '20px',
+              color: idx < 8 ? 'var(--success)' : 'var(--text-muted)'
+            }}>
+              {idx + 1}°
+            </span>
+
+            {/* Equipo */}
+            <span style={{ fontSize: '20px' }}>{team.flag}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '12px', fontWeight: '600' }}>{team.name}</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                Grupo {team.groupLetter} · {team.PTS}pts · DIF {team.DIF > 0 ? '+' : ''}{team.DIF} · {team.GF} GF
+              </div>
+            </div>
+
+            {/* Check */}
+            <div style={{
+              width: '22px', height: '22px', borderRadius: '50%',
+              border: selectedThirds.includes(team.groupLetter)
+                ? 'none' : '2px solid var(--border)',
+              background: selectedThirds.includes(team.groupLetter)
+                ? 'var(--success)' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {selectedThirds.includes(team.groupLetter) && (
+                <span style={{ fontSize: '12px', color: 'white' }}>✓</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Paso 3: Preview de cruces */}
+      {selectedThirds.length === 8 && (
+        <div className="card animate-slide-up" style={{ marginBottom: '16px' }}>
+          <h4 style={{ 
+            fontSize: '13px', fontWeight: '700', 
+            marginBottom: '12px', color: 'var(--success)' 
+          }}>
+            ✅ Vista previa de cruces
+          </h4>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Las fechas exactas las podrás editar desde la tab Partidos después de generar.
+          </p>
+
+          {[
+            { num: 49, h: classified.firsts['A'], a: classified.seconds['B'] },
+            { num: 55, h: classified.seconds['A'], a: classified.seconds['C'] },
+            { num: 52, h: classified.firsts['D'], a: classified.seconds['E'] },
+            { num: 53, h: classified.firsts['E'], a: classified.seconds['D'] },
+            { num: 56, h: classified.firsts['G'], a: classified.seconds['H'] },
+            { num: 57, h: classified.firsts['H'], a: classified.seconds['G'] },
+            { num: 59, h: classified.firsts['J'], a: classified.seconds['K'] },
+            { num: 62, h: classified.seconds['I'], a: classified.seconds['L'] },
+          ].map(({ num, h, a }) => (
+            <div key={num} style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '8px 0', borderBottom: '1px solid var(--border)',
+              fontSize: '12px'
+            }}>
+              <span style={{ 
+                fontSize: '10px', color: 'var(--text-muted)', 
+                width: '30px', fontWeight: '700' 
+              }}>
+                P{num}
+              </span>
+              {h ? (
+                <>
+                  <span>{h.flag}</span>
+                  <span style={{ flex: 1, fontWeight: '600' }}>{h.name}</span>
+                </>
+              ) : <span style={{ flex: 1, color: 'var(--text-muted)' }}>Por definir</span>}
+              <span style={{ color: 'var(--text-muted)', fontWeight: '700' }}>vs</span>
+              {a ? (
+                <>
+                  <span style={{ flex: 1, textAlign: 'right', fontWeight: '600' }}>{a.name}</span>
+                  <span>{a.flag}</span>
+                </>
+              ) : <span style={{ flex: 1, color: 'var(--text-muted)' }}>Por definir</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Botón generar */}
+      <button
+        className="btn btn-primary"
+        onClick={handleGenerate}
+        disabled={selectedThirds.length !== 8 || generating}
+        style={{
+          opacity: selectedThirds.length !== 8 ? 0.5 : 1,
+          background: selectedThirds.length === 8 
+            ? 'linear-gradient(135deg, var(--secondary), var(--secondary-dark))'
+            : undefined,
+          color: selectedThirds.length === 8 ? 'var(--bg-dark)' : 'white',
+          fontWeight: '800'
+        }}
+      >
+        {generating ? (
+          '⏳ Generando partidos...'
+        ) : selectedThirds.length === 8 ? (
+          '🚀 Generar 16 partidos de Dieciseisavos'
+        ) : (
+          `Seleccioná ${8 - selectedThirds.length} tercero${8 - selectedThirds.length !== 1 ? 's' : ''} más`
+        )}
+      </button>
     </div>
   )
 }

@@ -182,8 +182,12 @@ export const getPredictionsByUser = async (userId) => {
     .eq('user_id', userId)
   if (error) { console.error('getPredictionsByUser:', error); return [] }
   return data.map(p => ({
-    id: p.id, userId: p.user_id, matchId: p.match_id,
-    homeScore: p.home_score, awayScore: p.away_score
+    id: p.id,
+    userId: p.user_id,
+    matchId: p.match_id,
+    homeScore: p.home_score,
+    awayScore: p.away_score,
+    isWildcard: p.is_wildcard || false
   }))
 }
 
@@ -194,8 +198,12 @@ export const getPredictionsByMatch = async (matchId) => {
     .eq('match_id', matchId)
   if (error) { console.error('getPredictionsByMatch:', error); return [] }
   return data.map(p => ({
-    id: p.id, userId: p.user_id, matchId: p.match_id,
-    homeScore: p.home_score, awayScore: p.away_score
+    id: p.id,
+    userId: p.user_id,
+    matchId: p.match_id,
+    homeScore: p.home_score,
+    awayScore: p.away_score,
+    isWildcard: p.is_wildcard || false
   }))
 }
 
@@ -353,12 +361,17 @@ export const getRanking = async () => {
     })
     totalPoints += specialPoints
 
-    return {
-      ...user, totalPoints, exactPredictions, correctPredictions,
-      wrongPredictions,
-      totalPredictions: exactPredictions + correctPredictions + wrongPredictions,
-      currentStreak, bestStreak, bonusPoints, specialPoints
-    }
+  const wildcardsUsed = predictions
+  .filter(p => p.userId === user.id && p.isWildcard)
+  .length
+
+  return {
+    ...user, totalPoints, exactPredictions, correctPredictions,
+    wrongPredictions,
+    totalPredictions: exactPredictions + correctPredictions + wrongPredictions,
+    currentStreak, bestStreak, bonusPoints, specialPoints,
+    wildcardsUsed
+  }
   }).sort((a, b) => b.totalPoints - a.totalPoints)
 }
 
@@ -650,6 +663,158 @@ export const getAllWildcardsByUser = async (userId) => {
     isWildcard: p.is_wildcard
   }))
 }
+
+// =============================================
+// EVOLUCIÓN DE PUNTOS
+// =============================================
+
+export const getPointsEvolution = async () => {
+  const [users, matches, predictions, settings] = await Promise.all([
+    getUsers(), getMatches(), getPredictions(), getSettings()
+  ])
+
+  const finished = matches
+    .filter(m => m.status === 'finished')
+    .sort((a, b) => new Date(a.datetime) - new Date(b.datetime))
+
+  // Para cada usuario, calcular puntos acumulados partido a partido
+  const evolution = users.map(user => {
+    let accumulated = 0
+    const points = finished.map((match, idx) => {
+      const pred = predictions.find(
+        p => p.userId === user.id && p.matchId === match.id
+      )
+      if (pred) {
+        const result = calculatePoints(pred, match, settings)
+        if (result) accumulated += result.points
+      }
+      return {
+        matchNum: idx + 1,
+        matchLabel: `${match.homeFlag}${match.awayFlag}`,
+        points: accumulated
+      }
+    })
+
+    return {
+      id: user.id,
+      name: user.name,
+      emoji: user.emoji,
+      data: points
+    }
+  })
+
+  return evolution
+}
+
+// =============================================
+// CLASIFICADOS Y GENERACIÓN DE ELIMINATORIAS
+// =============================================
+
+export const getClassifiedTeams = async () => {
+  const { groups } = await getGroupStandings()
+  
+  const classified = {
+    firsts: {},   // 1ros de cada grupo
+    seconds: {},  // 2dos de cada grupo
+    thirds: []    // 3ros (para elegir los 8 mejores)
+  }
+
+  Object.keys(groups).sort().forEach(groupName => {
+    const teams = groups[groupName]
+    const letter = groupName.replace('Grupo ', '')
+    
+    if (teams[0]) classified.firsts[letter] = teams[0]
+    if (teams[1]) classified.seconds[letter] = teams[1]
+    if (teams[2]) classified.thirds.push({ 
+      ...teams[2], 
+      groupLetter: letter 
+    })
+  })
+
+  // Ordenar terceros por PTS, DIF, GF
+  classified.thirds.sort((a, b) => {
+    if (b.PTS !== a.PTS) return b.PTS - a.PTS
+    if (b.DIF !== a.DIF) return b.DIF - a.DIF
+    return b.GF - a.GF
+  })
+
+  return classified
+}
+
+export const generateKnockoutMatches = async (selectedThirds, matchDatetimes) => {
+  // selectedThirds: array de letters de los 8 terceros elegidos ['A','B','C',...]
+  // matchDatetimes: objeto con fechas para cada partido { 'P49': '2026-06-28T18:00:00Z', ... }
+  
+  const { firsts, seconds, thirds } = await getClassifiedTeams()
+
+  // Tabla oficial FIFA de cruces de Dieciseisavos
+  // basado en qué grupos de terceros clasifican
+  const thirdsKey = selectedThirds.sort().join('')
+  
+  // Definir los 16 cruces según la tabla FIFA
+  // Formato: [local, visitante]
+  const matches = [
+    // Partido 49: 1°A vs 2°B
+    { home: firsts['A'], away: seconds['B'], matchNum: 49 },
+    // Partido 50: 1°C vs 3° (de A/B/F según FIFA)
+    { home: firsts['C'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['A','B','F'].includes(t.groupLetter)), matchNum: 50 },
+    // Partido 51: 1°B vs 3° (de A/C/D)
+    { home: firsts['B'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['A','C','D'].includes(t.groupLetter)), matchNum: 51 },
+    // Partido 52: 1°D vs 2°E
+    { home: firsts['D'], away: seconds['E'], matchNum: 52 },
+    // Partido 53: 1°E vs 2°D
+    { home: firsts['E'], away: seconds['D'], matchNum: 53 },
+    // Partido 54: 1°F vs 3° (de B/E/F)
+    { home: firsts['F'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['B','E','F'].includes(t.groupLetter)), matchNum: 54 },
+    // Partido 55: 2°A vs 2°C
+    { home: seconds['A'], away: seconds['C'], matchNum: 55 },
+    // Partido 56: 1°G vs 2°H
+    { home: firsts['G'], away: seconds['H'], matchNum: 56 },
+    // Partido 57: 1°H vs 2°G
+    { home: firsts['H'], away: seconds['G'], matchNum: 57 },
+    // Partido 58: 1°I vs 3° (de G/H/I)
+    { home: firsts['I'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['G','H','I'].includes(t.groupLetter)), matchNum: 58 },
+    // Partido 59: 1°J vs 2°K
+    { home: firsts['J'], away: seconds['K'], matchNum: 59 },
+    // Partido 60: 1°K vs 3° (de I/J/L)
+    { home: firsts['K'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['I','J','L'].includes(t.groupLetter)), matchNum: 60 },
+    // Partido 61: 1°L vs 3° (de G/K/L)
+    { home: firsts['L'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['G','K','L'].includes(t.groupLetter)), matchNum: 61 },
+    // Partido 62: 2°I vs 2°L
+    { home: seconds['I'], away: seconds['L'], matchNum: 62 },
+    // Partido 63: 2°J vs 3° (de H/J/K)
+    { home: seconds['J'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['H','J','K'].includes(t.groupLetter)), matchNum: 63 },
+    // Partido 64: 2°F vs 3° (de C/D/E)
+    { home: seconds['F'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['C','D','E'].includes(t.groupLetter)), matchNum: 64 },
+  ]
+
+  // Insertar los partidos en Supabase
+  const results = []
+  for (const m of matches) {
+    if (!m.home || !m.away) {
+      results.push({ matchNum: m.matchNum, error: 'Equipo no encontrado' })
+      continue
+    }
+
+    const datetime = matchDatetimes[`P${m.matchNum}`] || '2026-06-28T18:00:00Z'
+
+    const result = await addMatch({
+      homeTeam: m.home.name,
+      homeFlag: m.home.flag,
+      awayTeam: m.away.name,
+      awayFlag: m.away.flag,
+      group: `D16-P${m.matchNum}`,
+      stage: 'Dieciseisavos',
+      datetime,
+      venue: ''
+    })
+
+    results.push({ matchNum: m.matchNum, success: !!result, result })
+  }
+
+  return results
+}
+
 
 
 // =============================================
