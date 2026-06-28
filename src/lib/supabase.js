@@ -84,7 +84,11 @@ export const getMatches = async () => {
     venue: m.venue,
     homeScore: m.home_score,
     awayScore: m.away_score,
-    status: m.status
+    status: m.status,
+    isPenalty: m.is_penalty || false,
+    penaltyWinner: m.penalty_winner || null,
+    penaltyHome: m.penalty_home,
+    penaltyAway: m.penalty_away
   }))
 }
 
@@ -99,7 +103,12 @@ export const getMatchById = async (id) => {
     id: data.id, homeTeam: data.home_team, homeFlag: data.home_flag,
     awayTeam: data.away_team, awayFlag: data.away_flag,
     group: data.match_group, stage: data.stage, datetime: data.datetime,
-    venue: data.venue, homeScore: data.home_score, awayScore: data.away_score, status: data.status
+    venue: data.venue, homeScore: data.home_score, awayScore: data.away_score,
+    status: data.status,
+    isPenalty: data.is_penalty || false,
+    penaltyWinner: data.penalty_winner || null,
+    penaltyHome: data.penalty_home,
+    penaltyAway: data.penalty_away
   }
 }
 
@@ -134,6 +143,10 @@ export const updateMatch = async (matchId, updates) => {
   if (updates.status !== undefined) dbUpdates.status = updates.status
   if (updates.venue !== undefined) dbUpdates.venue = updates.venue
   if (updates.datetime !== undefined) dbUpdates.datetime = updates.datetime
+  if (updates.isPenalty !== undefined) dbUpdates.is_penalty = updates.isPenalty
+  if (updates.penaltyWinner !== undefined) dbUpdates.penalty_winner = updates.penaltyWinner
+  if (updates.penaltyHome !== undefined) dbUpdates.penalty_home = updates.penaltyHome
+  if (updates.penaltyAway !== undefined) dbUpdates.penalty_away = updates.penaltyAway
 
   const { data, error } = await supabase
     .from('matches')
@@ -141,13 +154,64 @@ export const updateMatch = async (matchId, updates) => {
     .eq('id', matchId)
     .select()
     .single()
-  if (error) { console.error('updateMatch:', error); return null }
-  return {
-    id: data.id, homeTeam: data.home_team, homeFlag: data.home_flag,
-    awayTeam: data.away_team, awayFlag: data.away_flag,
-    group: data.match_group, stage: data.stage, datetime: data.datetime,
-    venue: data.venue, homeScore: data.home_score, awayScore: data.away_score, status: data.status
+
+  if (error) {
+    console.error('updateMatch:', error)
+    return null
   }
+
+  const result = {
+    id: data.id,
+    homeTeam: data.home_team,
+    homeFlag: data.home_flag,
+    awayTeam: data.away_team,
+    awayFlag: data.away_flag,
+    group: data.match_group,
+    stage: data.stage,
+    datetime: data.datetime,
+    venue: data.venue,
+    homeScore: data.home_score,
+    awayScore: data.away_score,
+    status: data.status
+  }
+
+  // ✅ Propagar automáticamente en eliminatorias
+  if (
+    updates.status === 'finished' &&
+    updates.homeScore !== undefined &&
+    updates.awayScore !== undefined &&
+    ['Dieciseisavos', 'Octavos de Final', 'Cuartos de Final', 'Semifinal'].includes(data.stage)
+  ) {
+    // Si hay penales, usar el penaltyWinner para propagar
+    const matchForPropagation = {
+      ...result,
+      // Si es penalty, forzar el ganador correcto
+      homeScore: data.is_penalty && data.penalty_winner === data.home_team
+        ? 1 : result.homeScore,
+      awayScore: data.is_penalty && data.penalty_winner === data.away_team
+        ? 1 : result.awayScore,
+    }
+
+    // Si es empate y hay penalty_winner, ajustar para que propague bien
+    if (data.is_penalty && data.penalty_winner) {
+      if (data.penalty_winner === data.home_team) {
+        matchForPropagation.homeScore = result.homeScore + 1
+        matchForPropagation.awayScore = result.awayScore
+      } else {
+        matchForPropagation.homeScore = result.homeScore
+        matchForPropagation.awayScore = result.awayScore + 1
+      }
+    }
+
+    const propagation = await propagateBracket(matchForPropagation)
+    if (propagation?.propagated) {
+      console.log(`🏆 ${propagation.winner} avanzó a ${propagation.nextMatch}`)
+    } else if (propagation?.error) {
+      console.warn(`⚠️ ${propagation.error}`)
+    }
+  }
+
+  return result
 }
 
 export const deleteMatch = async (matchId) => {
@@ -171,6 +235,10 @@ export const getPredictions = async () => {
     id: p.id, userId: p.user_id, matchId: p.match_id,
     homeScore: p.home_score, awayScore: p.away_score,
     isWildcard: p.is_wildcard || false,
+    predictsDraw: p.predicts_draw || false,
+    penaltyWinner: p.penalty_winner || null,
+    penaltyHome: p.penalty_home,
+    penaltyAway: p.penalty_away,
     createdAt: p.created_at
   }))
 }
@@ -219,41 +287,45 @@ export const getPrediction = async (userId, matchId) => {
   return {
     id: data.id, userId: data.user_id, matchId: data.match_id,
     homeScore: data.home_score, awayScore: data.away_score,
-    isWildcard: data.is_wildcard || false
+    isWildcard: data.is_wildcard || false,
+    predictsDraw: data.predicts_draw || false,
+    penaltyWinner: data.penalty_winner || null,
+    penaltyHome: data.penalty_home,
+    penaltyAway: data.penalty_away
   }
 }
 
-export const savePrediction = async (userId, matchId, homeScore, awayScore, isWildcard = false) => {
-  // Verificar que el partido no haya comenzado
+export const savePrediction = async (userId, matchId, homeScore, awayScore, isWildcard = false, penaltyData = null) => {
   const match = await getMatchById(matchId)
   if (match && new Date(match.datetime) <= new Date()) {
     return { error: '¡El partido ya comenzó! No puedes predecir.' }
   }
 
-  // Si quiere usar comodín, verificar que tenga disponibles
   if (isWildcard) {
     const used = await getWildcardsUsed(userId)
-    // Verificar si ya tenía comodín en este partido (no contar doble)
     const existingPred = await getPrediction(userId, matchId)
     const alreadyWildcard = existingPred?.isWildcard || false
-    
     if (used >= 3 && !alreadyWildcard) {
       return { error: '¡Ya usaste tus 3 comodines! 🃏' }
     }
   }
 
+  const upsertData = {
+    user_id: userId,
+    match_id: matchId,
+    home_score: homeScore,
+    away_score: awayScore,
+    is_wildcard: isWildcard,
+    predicts_draw: homeScore === awayScore,
+    penalty_winner: penaltyData?.penaltyWinner || null,
+    penalty_home: penaltyData?.penaltyHome || null,
+    penalty_away: penaltyData?.penaltyAway || null,
+    updated_at: new Date().toISOString()
+  }
+
   const { error } = await supabase
     .from('predictions')
-    .upsert({
-      user_id: userId,
-      match_id: matchId,
-      home_score: homeScore,
-      away_score: awayScore,
-      is_wildcard: isWildcard,
-      updated_at: new Date().toISOString()
-    }, {
-      onConflict: 'user_id,match_id'
-    })
+    .upsert(upsertData, { onConflict: 'user_id,match_id' })
 
   if (error) { console.error('savePrediction:', error); return { error: error.message } }
   return { success: true }
@@ -268,36 +340,68 @@ export const calculatePoints = (prediction, match, settings) => {
 
   const s = settings || { pointsExact: 5, pointsCorrect: 3 }
   const multiplier = prediction.isWildcard ? 2 : 1
+  const isKnockout = ['Dieciseisavos', 'Octavos de Final', 'Cuartos de Final', 'Semifinal', 'Tercer Puesto', 'Final'].includes(match.stage)
 
+  let totalPoints = 0
+  let breakdown = []
+
+  // 1) Resultado en 90 minutos (exacto o ganador)
   if (prediction.homeScore === match.homeScore &&
       prediction.awayScore === match.awayScore) {
-    return { 
-      points: s.pointsExact * multiplier, 
-      type: 'exact', 
-      isWildcard: prediction.isWildcard,
-      basePoints: s.pointsExact
+    totalPoints += s.pointsExact
+    breakdown.push({ label: 'Resultado exacto 90min', points: s.pointsExact })
+  } else {
+    const predResult = prediction.homeScore > prediction.awayScore ? 'home'
+      : prediction.homeScore < prediction.awayScore ? 'away' : 'draw'
+    const matchResult = match.homeScore > match.awayScore ? 'home'
+      : match.homeScore < match.awayScore ? 'away' : 'draw'
+
+    if (predResult === matchResult) {
+      totalPoints += s.pointsCorrect
+      breakdown.push({ label: 'Ganador/empate correcto', points: s.pointsCorrect })
     }
   }
 
-  const predResult = prediction.homeScore > prediction.awayScore ? 'home'
-    : prediction.homeScore < prediction.awayScore ? 'away' : 'draw'
-  const matchResult = match.homeScore > match.awayScore ? 'home'
-    : match.homeScore < match.awayScore ? 'away' : 'draw'
+  // 2) Bonus penales (solo en eliminatorias con penales)
+  if (isKnockout && match.isPenalty) {
+    // Acertó que iba a penales (predijo empate y fue empate)
+    if (prediction.predictsDraw && match.homeScore === match.awayScore) {
+      totalPoints += s.pointsCorrect
+      breakdown.push({ label: 'Acertó penales', points: s.pointsCorrect })
+    }
 
-  if (predResult === matchResult) {
-    return { 
-      points: s.pointsCorrect * multiplier, 
-      type: 'correct',
-      isWildcard: prediction.isWildcard,
-      basePoints: s.pointsCorrect
+    // Acertó quién clasifica en penales
+    if (prediction.penaltyWinner && match.penaltyWinner &&
+        prediction.penaltyWinner === match.penaltyWinner) {
+      totalPoints += s.pointsCorrect
+      breakdown.push({ label: 'Acertó clasificado', points: s.pointsCorrect })
+    }
+
+    // Acertó resultado exacto de penales
+    if (prediction.penaltyHome !== null && prediction.penaltyAway !== null &&
+        match.penaltyHome !== null && match.penaltyAway !== null &&
+        prediction.penaltyHome === match.penaltyHome &&
+        prediction.penaltyAway === match.penaltyAway) {
+      totalPoints += s.pointsExact
+      breakdown.push({ label: 'Penales exactos', points: s.pointsExact })
     }
   }
 
-  return { 
-    points: 0, 
-    type: 'wrong',
+  // Aplicar multiplicador del comodín
+  totalPoints = totalPoints * multiplier
+
+  // Determinar tipo para el estilo visual
+  const type = totalPoints === 0 ? 'wrong'
+    : breakdown.some(b => b.label.includes('exacto')) ? 'exact'
+    : 'correct'
+
+  return {
+    points: totalPoints,
+    type,
     isWildcard: prediction.isWildcard,
-    basePoints: 0
+    basePoints: totalPoints / multiplier,
+    breakdown,
+    isPenalty: match.isPenalty
   }
 }
 
@@ -899,6 +1003,146 @@ function getThirdAssignments(key, qualifiedGroups) {
     }
   })
   return assignment
+}
+
+
+// =============================================
+// PROPAGACIÓN AUTOMÁTICA DEL BRACKET
+// =============================================
+
+// Mapa real del bracket actual
+const BRACKET_MAP = {
+  // Dieciseisavos → Octavos
+  'D16-P49': { next: 'OCT-1', side: 'home' },
+  'D16-P50': { next: 'OCT-1', side: 'away' },
+
+  'D16-P53': { next: 'OCT-2', side: 'home' },
+  'D16-P54': { next: 'OCT-2', side: 'away' },
+
+  'D16-P51': { next: 'OCT-3', side: 'home' },
+  'D16-P52': { next: 'OCT-3', side: 'away' },
+
+  'D16-P55': { next: 'OCT-4', side: 'home' },
+  'D16-P56': { next: 'OCT-4', side: 'away' },
+
+  'D16-P57': { next: 'OCT-5', side: 'home' },
+  'D16-P58': { next: 'OCT-5', side: 'away' },
+
+  'D16-P59': { next: 'OCT-6', side: 'home' },
+  'D16-P60': { next: 'OCT-6', side: 'away' },
+
+  'D16-P61': { next: 'OCT-7', side: 'home' },
+  'D16-P64': { next: 'OCT-7', side: 'away' },
+
+  'D16-P62': { next: 'OCT-8', side: 'home' },
+  'D16-P63': { next: 'OCT-8', side: 'away' },
+
+  // Octavos → Cuartos
+  'OCT-1': { next: 'Cuartos 1', side: 'home' },
+  'OCT-2': { next: 'Cuartos 1', side: 'away' },
+
+  'OCT-3': { next: 'Cuartos 2', side: 'home' },
+  'OCT-4': { next: 'Cuartos 2', side: 'away' },
+
+  'OCT-5': { next: 'Cuartos 3', side: 'home' },
+  'OCT-6': { next: 'Cuartos 3', side: 'away' },
+
+  'OCT-7': { next: 'Cuartos 4', side: 'home' },
+  'OCT-8': { next: 'Cuartos 4', side: 'away' },
+
+  // Cuartos → Semifinal
+  'Cuartos 1': { next: 'Semi 1', side: 'home' },
+  'Cuartos 2': { next: 'Semi 1', side: 'away' },
+
+  'Cuartos 3': { next: 'Semi 2', side: 'home' },
+  'Cuartos 4': { next: 'Semi 2', side: 'away' },
+
+  // Semis → Final y Tercer Puesto
+  'Semi 1': {
+    next: '⭐ FINAL ⭐',
+    side: 'home',
+    loserNext: '3er Puesto',
+    loserSide: 'home'
+  },
+  'Semi 2': {
+    next: '⭐ FINAL ⭐',
+    side: 'away',
+    loserNext: '3er Puesto',
+    loserSide: 'away'
+  },
+}
+
+const getMatchWinner = (match) => {
+  if (match.homeScore > match.awayScore) {
+    return { name: match.homeTeam, flag: match.homeFlag }
+  }
+  if (match.awayScore > match.homeScore) {
+    return { name: match.awayTeam, flag: match.awayFlag }
+  }
+  return null
+}
+
+const getMatchLoser = (match) => {
+  if (match.homeScore > match.awayScore) {
+    return { name: match.awayTeam, flag: match.awayFlag }
+  }
+  if (match.awayScore > match.homeScore) {
+    return { name: match.homeTeam, flag: match.homeFlag }
+  }
+  return null
+}
+
+export const propagateBracket = async (finishedMatch) => {
+  const mapping = BRACKET_MAP[finishedMatch.group]
+  if (!mapping) return { propagated: false }
+
+  const winner = getMatchWinner(finishedMatch)
+  if (!winner) {
+    return { error: 'Empate: la app no sabe quién avanzó. Define un ganador manualmente en el marcador.' }
+  }
+
+  const allMatches = await getMatches()
+  const nextMatch = allMatches.find(m => m.group === mapping.next)
+
+  if (!nextMatch) {
+    return { error: `No se encontró el partido siguiente: ${mapping.next}` }
+  }
+
+  const updates = {}
+  if (mapping.side === 'home') {
+    updates.homeTeam = winner.name
+    updates.homeFlag = winner.flag
+  } else {
+    updates.awayTeam = winner.name
+    updates.awayFlag = winner.flag
+  }
+
+  await updateMatch(nextMatch.id, updates)
+
+  // Si viene de semifinal, también mandar al perdedor al 3er puesto
+  if (mapping.loserNext) {
+    const loser = getMatchLoser(finishedMatch)
+    if (loser) {
+      const loserMatch = allMatches.find(m => m.group === mapping.loserNext)
+      if (loserMatch) {
+        const loserUpdates = {}
+        if (mapping.loserSide === 'home') {
+          loserUpdates.homeTeam = loser.name
+          loserUpdates.homeFlag = loser.flag
+        } else {
+          loserUpdates.awayTeam = loser.name
+          loserUpdates.awayFlag = loser.flag
+        }
+        await updateMatch(loserMatch.id, loserUpdates)
+      }
+    }
+  }
+
+  return {
+    propagated: true,
+    winner: winner.name,
+    nextMatch: mapping.next
+  }
 }
 
 
