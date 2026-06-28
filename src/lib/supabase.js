@@ -732,10 +732,28 @@ export const getClassifiedTeams = async () => {
   })
 
   // Ordenar terceros por PTS, DIF, GF
+  const officialThirdOrder = [
+    'RD Congo',
+    'Suecia',
+    'Ghana',
+    'Ecuador',
+    'Bosnia',
+    'Argelia',
+    'Paraguay',
+    'Senegal'
+  ]
+
+  const getOfficialThirdIndex = (teamName) => {
+    const idx = officialThirdOrder.indexOf(teamName)
+    return idx === -1 ? 999 : idx
+  }
+
+  // Ordenar terceros por PTS, DIF, GF y luego orden oficial
   classified.thirds.sort((a, b) => {
     if (b.PTS !== a.PTS) return b.PTS - a.PTS
     if (b.DIF !== a.DIF) return b.DIF - a.DIF
-    return b.GF - a.GF
+    if (b.GF !== a.GF) return b.GF - a.GF
+    return getOfficialThirdIndex(a.name) - getOfficialThirdIndex(b.name)
   })
 
   return classified
