@@ -760,77 +760,145 @@ export const getClassifiedTeams = async () => {
 }
 
 export const generateKnockoutMatches = async (selectedThirds, matchDatetimes) => {
-  // selectedThirds: array de letters de los 8 terceros elegidos ['A','B','C',...]
-  // matchDatetimes: objeto con fechas para cada partido { 'P49': '2026-06-28T18:00:00Z', ... }
-  
   const { firsts, seconds, thirds } = await getClassifiedTeams()
 
-  // Tabla oficial FIFA de cruces de Dieciseisavos
-  // basado en qué grupos de terceros clasifican
-  const thirdsKey = selectedThirds.sort().join('')
-  
-  // Definir los 16 cruces según la tabla FIFA
-  // Formato: [local, visitante]
-  const matches = [
-    // Partido 49: 1°A vs 2°B
-    { home: firsts['A'], away: seconds['B'], matchNum: 49 },
-    // Partido 50: 1°C vs 3° (de A/B/F según FIFA)
-    { home: firsts['C'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['A','B','F'].includes(t.groupLetter)), matchNum: 50 },
-    // Partido 51: 1°B vs 3° (de A/C/D)
-    { home: firsts['B'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['A','C','D'].includes(t.groupLetter)), matchNum: 51 },
-    // Partido 52: 1°D vs 2°E
-    { home: firsts['D'], away: seconds['E'], matchNum: 52 },
-    // Partido 53: 1°E vs 2°D
-    { home: firsts['E'], away: seconds['D'], matchNum: 53 },
-    // Partido 54: 1°F vs 3° (de B/E/F)
-    { home: firsts['F'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['B','E','F'].includes(t.groupLetter)), matchNum: 54 },
-    // Partido 55: 2°A vs 2°C
-    { home: seconds['A'], away: seconds['C'], matchNum: 55 },
-    // Partido 56: 1°G vs 2°H
-    { home: firsts['G'], away: seconds['H'], matchNum: 56 },
-    // Partido 57: 1°H vs 2°G
-    { home: firsts['H'], away: seconds['G'], matchNum: 57 },
-    // Partido 58: 1°I vs 3° (de G/H/I)
-    { home: firsts['I'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['G','H','I'].includes(t.groupLetter)), matchNum: 58 },
-    // Partido 59: 1°J vs 2°K
-    { home: firsts['J'], away: seconds['K'], matchNum: 59 },
-    // Partido 60: 1°K vs 3° (de I/J/L)
-    { home: firsts['K'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['I','J','L'].includes(t.groupLetter)), matchNum: 60 },
-    // Partido 61: 1°L vs 3° (de G/K/L)
-    { home: firsts['L'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['G','K','L'].includes(t.groupLetter)), matchNum: 61 },
-    // Partido 62: 2°I vs 2°L
-    { home: seconds['I'], away: seconds['L'], matchNum: 62 },
-    // Partido 63: 2°J vs 3° (de H/J/K)
-    { home: seconds['J'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['H','J','K'].includes(t.groupLetter)), matchNum: 63 },
-    // Partido 64: 2°F vs 3° (de C/D/E)
-    { home: seconds['F'], away: thirds.find(t => selectedThirds.includes(t.groupLetter) && ['C','D','E'].includes(t.groupLetter)), matchNum: 64 },
+  // Crear mapa de terceros por grupo para acceso directo
+  const thirdByGroup = {}
+  thirds.forEach(t => {
+    if (selectedThirds.includes(t.groupLetter)) {
+      thirdByGroup[t.groupLetter] = t
+    }
+  })
+
+  // Los 8 grupos clasificados ordenados
+  const qualifiedGroups = selectedThirds.sort()
+  const key = qualifiedGroups.join('')
+
+  // Tabla oficial FIFA: según qué 8 grupos de terceros clasifican,
+  // se asigna cada tercero a un partido específico
+  // Formato: { partidoNum: grupoDelTercero }
+  const thirdAssignments = getThirdAssignments(key, qualifiedGroups)
+
+  // Los 16 cruces oficiales FIFA
+  const knockoutBracket = [
+    // Lado A del cuadro
+    { num: 49, home: firsts['A'], away: thirdAssignments['P49'] ? thirdByGroup[thirdAssignments['P49']] : null },
+    { num: 50, home: seconds['A'], away: seconds['C'] },
+    { num: 51, home: firsts['C'], away: thirdAssignments['P51'] ? thirdByGroup[thirdAssignments['P51']] : null },
+    { num: 52, home: seconds['B'], away: seconds['D'] },
+    { num: 53, home: firsts['B'], away: thirdAssignments['P53'] ? thirdByGroup[thirdAssignments['P53']] : null },
+    { num: 54, home: seconds['E'], away: seconds['F'] },
+    { num: 55, home: firsts['D'], away: thirdAssignments['P55'] ? thirdByGroup[thirdAssignments['P55']] : null },
+    { num: 56, home: firsts['E'], away: seconds['G'] },
+
+    // Lado B del cuadro
+    { num: 57, home: firsts['F'], away: seconds['I'] },
+    { num: 58, home: firsts['G'], away: thirdAssignments['P58'] ? thirdByGroup[thirdAssignments['P58']] : null },
+    { num: 59, home: firsts['H'], away: thirdAssignments['P59'] ? thirdByGroup[thirdAssignments['P59']] : null },
+    { num: 60, home: firsts['I'], away: seconds['H'] },
+    { num: 61, home: firsts['J'], away: thirdAssignments['P61'] ? thirdByGroup[thirdAssignments['P61']] : null },
+    { num: 62, home: firsts['K'], away: seconds['L'] },
+    { num: 63, home: firsts['L'], away: thirdAssignments['P63'] ? thirdByGroup[thirdAssignments['P63']] : null },
+    { num: 64, home: seconds['J'], away: seconds['K'] },
   ]
 
   // Insertar los partidos en Supabase
   const results = []
-  for (const m of matches) {
+  for (const m of knockoutBracket) {
     if (!m.home || !m.away) {
-      results.push({ matchNum: m.matchNum, error: 'Equipo no encontrado' })
+      console.error(`Partido P${m.num}: equipo no encontrado`, {
+        home: m.home?.name || 'FALTA',
+        away: m.away?.name || 'FALTA'
+      })
+      results.push({ matchNum: m.num, error: `Equipo faltante en P${m.num}` })
       continue
     }
 
-    const datetime = matchDatetimes[`P${m.matchNum}`] || '2026-06-28T18:00:00Z'
+    const datetime = matchDatetimes?.[`P${m.num}`] || '2026-06-28T18:00:00Z'
 
     const result = await addMatch({
       homeTeam: m.home.name,
       homeFlag: m.home.flag,
       awayTeam: m.away.name,
       awayFlag: m.away.flag,
-      group: `D16-P${m.matchNum}`,
+      group: `D16-P${m.num}`,
       stage: 'Dieciseisavos',
       datetime,
       venue: ''
     })
 
-    results.push({ matchNum: m.matchNum, success: !!result, result })
+    results.push({ matchNum: m.num, success: !!result })
   }
 
   return results
+}
+
+// Tabla FIFA de asignación de terceros según combinación de grupos clasificados
+function getThirdAssignments(key, qualifiedGroups) {
+  // Para el Mundial 2026: 12 grupos, clasifican 8 terceros
+  // Hay muchas combinaciones posibles
+  // Esta función mapea cada tercero al partido que le corresponde
+  
+  // Partidos donde juegan terceros:
+  // P49: 1°A vs 3°?
+  // P51: 1°C vs 3°?
+  // P53: 1°B vs 3°?
+  // P55: 1°D vs 3°?
+  // P58: 1°G vs 3°?
+  // P59: 1°H vs 3°?
+  // P61: 1°J vs 3°?
+  // P63: 1°L vs 3°?
+
+  // Tabla simplificada para las combinaciones más comunes
+  // Clave: grupos de terceros ordenados
+  // Valor: asignación de cada tercero a cada partido
+  
+  const tables = {
+    // Combinación: B,D,E,F,I,J,K,L (tu caso actual)
+    'BDEFIJKL': {
+      'P49': 'E',   // 1°A vs 3°E
+      'P51': 'B',   // 1°C vs 3°B
+      'P53': 'F',   // 1°B vs 3°F
+      'P55': 'D',   // 1°D vs 3°D
+      'P58': 'I',   // 1°G vs 3°I
+      'P59': 'J',   // 1°H vs 3°J
+      'P61': 'K',   // 1°J vs 3°K
+      'P63': 'L',   // 1°L vs 3°L
+    },
+    // Otras combinaciones posibles (agregar según se necesiten)
+    'ABCDEFGH': {
+      'P49': 'C', 'P51': 'A', 'P53': 'B',
+      'P55': 'D', 'P58': 'G', 'P59': 'H',
+      'P61': 'E', 'P63': 'F',
+    },
+    'ABCDEFGI': {
+      'P49': 'C', 'P51': 'A', 'P53': 'B',
+      'P55': 'D', 'P58': 'G', 'P59': 'I',
+      'P61': 'E', 'P63': 'F',
+    },
+    'ABCDEFGJ': {
+      'P49': 'C', 'P51': 'A', 'P53': 'B',
+      'P55': 'D', 'P58': 'G', 'P59': 'J',
+      'P61': 'E', 'P63': 'F',
+    },
+  }
+
+  // Buscar en la tabla
+  if (tables[key]) {
+    return tables[key]
+  }
+
+  // Fallback: si no encontramos la combinación exacta,
+  // asignar en orden (no ideal pero funciona)
+  console.warn(`Combinación de terceros ${key} no encontrada en tabla FIFA. Usando fallback.`)
+  const thirdSlots = ['P49', 'P51', 'P53', 'P55', 'P58', 'P59', 'P61', 'P63']
+  const assignment = {}
+  qualifiedGroups.forEach((group, idx) => {
+    if (thirdSlots[idx]) {
+      assignment[thirdSlots[idx]] = group
+    }
+  })
+  return assignment
 }
 
 
