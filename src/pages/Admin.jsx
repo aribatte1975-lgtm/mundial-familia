@@ -478,12 +478,14 @@ const KnockoutTab = ({ onToast, onReload }) => {
     const results = await generateKnockoutMatches(selectedThirds, {})
     setGenerating(false)
 
-    const errors = results.filter(r => r.error)
-    if (errors.length > 0) {
-      onToast(`⚠️ ${errors.length} partidos con error`, 'error')
-    } else {
-      onToast('¡16 partidos de Dieciseisavos generados! 🏆', 'success')
-      onReload()
+    const errors = results.filter(r => r.error || !r.success)
+
+      if (errors.length > 0) {
+        onToast(`⚠️ ${errors.length} partidos con error`, 'error')
+        console.error('Errores al generar D16:', errors)
+      } else {
+        onToast('¡16 partidos de Dieciseisavos generados! 🏆', 'success')
+        onReload()
     }
   }
 
