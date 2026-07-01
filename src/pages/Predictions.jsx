@@ -182,15 +182,37 @@ const Predictions = () => {
                 <Countdown targetDate={match.datetime} />
                 {existing && (
                   <div style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    justifyContent: 'center', marginTop: '8px',
-                    color: 'var(--success)', fontSize: '12px'
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    gap: '4px', marginTop: '8px'
                   }}>
-                    <Check size={14} />
-                    <span>
-                      Ya predijiste: {existing.homeScore} - {existing.awayScore}
-                      {existing.isWildcard && ' 🃏x2'}
-                    </span>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      color: 'var(--success)', fontSize: '12px'
+                    }}>
+                      <Check size={14} />
+                      <span>
+                        Ya predijiste: {existing.homeScore} - {existing.awayScore}
+                        {existing.isWildcard && ' 🃏x2'}
+                      </span>
+                    </div>
+                    {existing.predictedResolution && (
+                      <div style={{
+                        fontSize: '11px', color: 'var(--warning)',
+                        display: 'flex', alignItems: 'center', gap: '6px'
+                      }}>
+                        <span>
+                          {existing.predictedResolution === 'extra_time' ? '⏱️ Prórroga' : '⚽ Penales'}
+                          {' → '}
+                          <b>{existing.penaltyWinner}</b>
+                        </span>
+                        {existing.predictedResolution === 'penalties' &&
+                        existing.penaltyHome !== null && existing.penaltyAway !== null && (
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            ({existing.penaltyHome}-{existing.penaltyAway})
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 <PredictionForm
@@ -227,15 +249,37 @@ const Predictions = () => {
                 <Countdown targetDate={match.datetime} />
                 {existing && (
                   <div style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    justifyContent: 'center', marginTop: '8px',
-                    color: 'var(--success)', fontSize: '12px'
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    gap: '4px', marginTop: '8px'
                   }}>
-                    <Check size={14} />
-                    <span>
-                      Ya predijiste: {existing.homeScore} - {existing.awayScore}
-                      {existing.isWildcard && ' 🃏x2'}
-                    </span>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      color: 'var(--success)', fontSize: '12px'
+                    }}>
+                      <Check size={14} />
+                      <span>
+                        Ya predijiste: {existing.homeScore} - {existing.awayScore}
+                        {existing.isWildcard && ' 🃏x2'}
+                      </span>
+                    </div>
+                    {existing.predictedResolution && (
+                      <div style={{
+                        fontSize: '11px', color: 'var(--warning)',
+                        display: 'flex', alignItems: 'center', gap: '6px'
+                      }}>
+                        <span>
+                          {existing.predictedResolution === 'extra_time' ? '⏱️ Prórroga' : '⚽ Penales'}
+                          {' → '}
+                          <b>{existing.penaltyWinner}</b>
+                        </span>
+                        {existing.predictedResolution === 'penalties' &&
+                        existing.penaltyHome !== null && existing.penaltyAway !== null && (
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            ({existing.penaltyHome}-{existing.penaltyAway})
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 <PredictionForm
@@ -274,11 +318,29 @@ const Predictions = () => {
                     borderRadius: 'var(--radius-sm)', textAlign: 'center'
                   }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Tu predicción: 
+                      Tu predicción:{' '}
                     </span>
                     <span style={{ fontSize: '18px', fontWeight: '700', color: 'var(--secondary)' }}>
                       {existing.homeScore} - {existing.awayScore}
                     </span>
+                    {existing.predictedResolution && (
+                      <div style={{
+                        marginTop: '6px', fontSize: '11px', color: 'var(--warning)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}>
+                        <span>
+                          {existing.predictedResolution === 'extra_time' ? '⏱️ Prórroga' : '⚽ Penales'}
+                          {' → '}
+                          <b>{existing.penaltyWinner}</b>
+                        </span>
+                        {existing.predictedResolution === 'penalties' &&
+                        existing.penaltyHome !== null && existing.penaltyAway !== null && (
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            ({existing.penaltyHome}-{existing.penaltyAway})
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {existing.isWildcard && (
                       <div style={{
                         marginTop: '4px', fontSize: '11px',
