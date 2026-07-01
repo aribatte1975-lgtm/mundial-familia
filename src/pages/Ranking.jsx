@@ -142,85 +142,175 @@ const Ranking = () => {
       <>
         <RankingTable ranking={ranking} />
         <div className="card mt-2" style={{ padding: '16px' }}>
-      <h4 style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-        📋 Sistema de puntos
-      </h4>
+  <h4 style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+    📋 Sistema de puntos
+  </h4>
 
-      <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {[
-          { label: '⭐ Resultado exacto', val: `+${settings.pointsExact} pts`, color: 'var(--secondary)' },
-          { label: '✅ Acertar ganador/empate', val: `+${settings.pointsCorrect} pts`, color: 'var(--success)' },
-          { label: '🃏 Comodín (x2)', val: 'Duplica puntos', color: 'var(--info)' },
-          { label: `🔥 Racha: cada ${settings.bonusStreak} aciertos seguidos`, val: `+${settings.pointsBonus} pts`, color: 'var(--warning)' },
-        ].map(item => (
-          <div key={item.label} className="flex-between">
-            <span>{item.label}</span>
-            <span style={{ fontWeight: '700', color: item.color }}>{item.val}</span>
-          </div>
-        ))}
+  {/* Tabla resumen */}
+  <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+    {[
+      { label: '⭐ Resultado exacto 90min', val: `+${settings.pointsExact} pts`, color: 'var(--secondary)' },
+      { label: '✅ Acertar ganador/empate', val: `+${settings.pointsCorrect} pts`, color: 'var(--success)' },
+      { label: '🃏 Comodín', val: 'x2 todo', color: 'var(--info)' },
+      { label: `🔥 Racha cada ${settings.bonusStreak} aciertos`, val: `+${settings.pointsBonus} pts`, color: 'var(--warning)' },
+    ].map(item => (
+      <div key={item.label} className="flex-between">
+        <span>{item.label}</span>
+        <span style={{ fontWeight: '700', color: item.color }}>{item.val}</span>
       </div>
+    ))}
+  </div>
 
-      {/* Explicación general */}
+  {/* Cómo funciona - general */}
+  <div style={{
+    marginTop: '12px', padding: '10px',
+    background: 'var(--bg-dark)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '11px', color: 'var(--text-muted)',
+    lineHeight: '1.7'
+  }}>
+    <div style={{ fontWeight: '700', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+      📖 Reglas generales
+    </div>
+    <div>⭐ Predecís 2-1 y sale 2-1 → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact} pts</b></div>
+    <div>✅ Predecís 2-1 y sale 3-0 (ganador correcto) → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect} pts</b></div>
+    <div>❌ Fallás el ganador → <b style={{ color: 'var(--danger)' }}>0 pts</b></div>
+    <div style={{ marginTop: '4px' }}>
+      🃏 Comodín: <b style={{ color: 'var(--info)' }}>duplica todos los puntos</b> que ganés en ese partido
+    </div>
+    <div style={{ marginTop: '4px' }}>
+      🔥 Racha: bonus de <b style={{ color: 'var(--warning)' }}>+{settings.pointsBonus} pts</b> por cada {settings.bonusStreak} aciertos <b>consecutivos</b> (no suma en cada partido, solo al completar el grupo de {settings.bonusStreak})
+    </div>
+  </div>
+
+  {/* Eliminatorias */}
+  <div style={{
+    marginTop: '10px', padding: '10px',
+    background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(212,168,67,0.06))',
+    border: '1px solid rgba(245,158,11,0.2)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '11px', color: 'var(--text-muted)',
+    lineHeight: '1.7'
+  }}>
+    <div style={{ fontWeight: '700', marginBottom: '6px', color: 'var(--warning)' }}>
+      🏆 Eliminatorias — bonus por resolución
+    </div>
+    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+      Si predecís empate en 90min, podés elegir cómo se resuelve y sumar puntos extra:
+    </div>
+
+    {/* Suplementario */}
+    <div style={{
+      padding: '8px', marginBottom: '6px',
+      background: 'rgba(59,130,246,0.08)',
+      border: '1px solid rgba(59,130,246,0.15)',
+      borderRadius: 'var(--radius-sm)'
+    }}>
+      <div style={{ fontWeight: '700', color: 'var(--info)', marginBottom: '4px' }}>
+        ⏱️ Si elegís Suplementario (prórroga):
+      </div>
+      <div>✅ Acertás empate 90min → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b></div>
+      <div>⭐ + resultado exacto del empate → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact - settings.pointsCorrect} más (total {settings.pointsExact})</b></div>
+      <div>🎯 Acertás suplementario + quién clasifica → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b></div>
       <div style={{
-        marginTop: '10px', padding: '10px',
-        background: 'var(--bg-dark)',
-        borderRadius: 'var(--radius-sm)',
-        fontSize: '11px', color: 'var(--text-muted)',
-        lineHeight: '1.6'
+        marginTop: '4px', fontSize: '10px', fontWeight: '700',
+        color: 'var(--info)'
       }}>
-        <div style={{ fontWeight: '700', marginBottom: '4px', color: 'var(--text-secondary)' }}>
-          📖 ¿Cómo funciona?
-        </div>
-        <div>⭐ Predecís 2-1 y sale 2-1 → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact}</b></div>
-        <div>✅ Predecís 2-1 y sale 3-0 (acertás ganador) → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b></div>
-        <div>🃏 Usás comodín y acertás → <b style={{ color: 'var(--info)' }}>puntos x2</b></div>
-        <div>🔥 Acertás {settings.bonusStreak} seguidos → <b style={{ color: 'var(--warning)' }}>+{settings.pointsBonus} bonus</b> (solo cada {settings.bonusStreak})</div>
-        <div>❌ Fallás → 0 puntos y se corta la racha</div>
+        Máximo: {settings.pointsExact + settings.pointsCorrect} pts
+        {' · '}con 🃏: {(settings.pointsExact + settings.pointsCorrect) * 2} pts
       </div>
+    </div>
 
-      {/* Explicación eliminatorias y penales */}
-      <div style={{
-        marginTop: '10px', padding: '10px',
-        background: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(212,168,67,0.06))',
-        border: '1px solid rgba(245,158,11,0.15)',
-        borderRadius: 'var(--radius-sm)',
-        fontSize: '11px', color: 'var(--text-muted)',
-        lineHeight: '1.6'
-      }}>
-        <div style={{ fontWeight: '700', marginBottom: '4px', color: 'var(--warning)' }}>
-          ⚽ Eliminatorias: bonus por penales
-        </div>
-        <div style={{ marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '10px' }}>
-          Si predecís empate en eliminatorias, podés sumar puntos extra:
-        </div>
-        <div>
-          ⭐ Resultado exacto 90min → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact}</b>
-        </div>
-        <div>
-          ⚽ Acertás que va a penales → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b>
-        </div>
-        <div>
-          🏆 Acertás quién clasifica → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b>
-        </div>
-        <div>
-          🎯 Acertás resultado de penales → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact}</b>
-        </div>
-        <div style={{
-          marginTop: '8px', padding: '6px 8px',
-          background: 'var(--bg-dark)',
-          borderRadius: 'var(--radius-sm)',
-          textAlign: 'center'
-        }}>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Máximo por partido con penales: </span>
-          <b style={{ color: 'var(--secondary)', fontSize: '12px' }}>
-            {settings.pointsExact + settings.pointsCorrect + settings.pointsCorrect + settings.pointsExact} pts
-          </b>
-          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}> · con comodín: </span>
-          <b style={{ color: 'var(--info)', fontSize: '12px' }}>
-            {(settings.pointsExact + settings.pointsCorrect + settings.pointsCorrect + settings.pointsExact) * 2} pts 🔥
-          </b>
-        </div>
+    {/* Penales */}
+    <div style={{
+      padding: '8px',
+      background: 'rgba(245,158,11,0.08)',
+      border: '1px solid rgba(245,158,11,0.15)',
+      borderRadius: 'var(--radius-sm)'
+    }}>
+      <div style={{ fontWeight: '700', color: 'var(--warning)', marginBottom: '4px' }}>
+        ⚽ Si elegís Penales:
       </div>
+      <div>✅ Acertás empate 90min → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b></div>
+      <div>⭐ + resultado exacto del empate → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact - settings.pointsCorrect} más (total {settings.pointsExact})</b></div>
+      <div>🎯 Acertás penales + quién clasifica → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b></div>
+      <div>🎯 + resultado exacto penales → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect} más</b></div>
+      <div style={{
+        marginTop: '4px', fontSize: '10px', fontWeight: '700',
+        color: 'var(--warning)'
+      }}>
+        Máximo: {settings.pointsExact + settings.pointsCorrect + settings.pointsCorrect} pts
+        {' · '}con 🃏: {(settings.pointsExact + settings.pointsCorrect + settings.pointsCorrect) * 2} pts
+      </div>
+    </div>
+  </div>
+
+  {/* Ejemplos */}
+  <div style={{
+    marginTop: '10px', padding: '10px',
+    background: 'var(--bg-dark)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '10px', color: 'var(--text-muted)',
+    lineHeight: '1.8'
+  }}>
+    <div style={{ fontWeight: '700', marginBottom: '6px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+      💡 Ejemplos prácticos
+    </div>
+
+    {/* Ejemplo 1: partido normal */}
+    <div style={{
+      marginBottom: '8px', paddingBottom: '8px',
+      borderBottom: '1px solid var(--border)'
+    }}>
+      <div style={{ fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+        Partido normal: Argentina 3-0 (predijiste 2-0)
+      </div>
+      <div style={{ paddingLeft: '8px' }}>
+        ✅ Acertaste ganador → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect} pts</b>
+      </div>
+    </div>
+
+    {/* Ejemplo 2: suplementario */}
+    <div style={{
+      marginBottom: '8px', paddingBottom: '8px',
+      borderBottom: '1px solid var(--border)'
+    }}>
+      <div style={{ fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+        Suplementario: 1-1 → clasifica Francia (predijiste 1-1, suplementario, Francia)
+      </div>
+      <div style={{ paddingLeft: '8px' }}>
+        ⭐ Exacto 90min → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact}</b>
+      </div>
+      <div style={{ paddingLeft: '8px' }}>
+        🎯 Suplementario + clasificado → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b>
+      </div>
+      <div style={{ paddingLeft: '8px', fontWeight: '700', color: 'var(--secondary)' }}>
+        Total: {settings.pointsExact + settings.pointsCorrect} pts
+        {' · '}con 🃏: {(settings.pointsExact + settings.pointsCorrect) * 2} pts
+      </div>
+    </div>
+
+    {/* Ejemplo 3: penales completo */}
+    <div>
+      <div style={{ fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+        Penales: 1-1 → clasifica Argentina 4-2 (predijiste todo exacto)
+      </div>
+      <div style={{ paddingLeft: '8px' }}>
+        ⭐ Exacto 90min → <b style={{ color: 'var(--secondary)' }}>+{settings.pointsExact}</b>
+      </div>
+      <div style={{ paddingLeft: '8px' }}>
+        🎯 Penales + clasificado → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b>
+      </div>
+      <div style={{ paddingLeft: '8px' }}>
+        🎯 Penales exactos → <b style={{ color: 'var(--success)' }}>+{settings.pointsCorrect}</b>
+      </div>
+      <div style={{ paddingLeft: '8px', fontWeight: '700', color: 'var(--secondary)' }}>
+        Total: {settings.pointsExact + settings.pointsCorrect + settings.pointsCorrect} pts
+        {' · '}con 🃏: {(settings.pointsExact + settings.pointsCorrect + settings.pointsCorrect) * 2} pts 🔥
+      </div>
+    </div>
+  </div>
+
 
       {/* Ejemplo visual */}
       <div style={{
