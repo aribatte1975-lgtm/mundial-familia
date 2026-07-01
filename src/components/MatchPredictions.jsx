@@ -123,61 +123,93 @@ const MatchPredictions = ({ match }) => {
 
         return (
           <div key={u.id} style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
             padding: '8px 12px',
             borderBottom: idx < users.length - 1 ? '1px solid var(--border)' : 'none',
             animation: `slideUp 0.3s ease-out ${idx * 0.1}s both`
           }}>
-            <span style={{ fontSize: '20px' }}>{u.emoji}</span>
-            <span style={{
-              flex: 1, fontSize: '13px', fontWeight: '600'
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px'
             }}>
-              {u.name}
-            </span>
+              <span style={{ fontSize: '20px' }}>{u.emoji}</span>
+              <span style={{ flex: 1, fontSize: '13px', fontWeight: '600' }}>
+                {u.name}
+              </span>
 
-            {pred ? (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px'
-              }}>
-                <div style={{
-                  background: 'var(--bg-card)',
-                  borderRadius: '8px',
-                  padding: '4px 12px',
-                  fontWeight: '800',
-                  fontSize: '15px',
-                  color: points?.type === 'exact' ? 'var(--secondary)' :
-                         points?.type === 'correct' ? 'var(--success)' :
-                         points?.type === 'wrong' ? 'var(--text-muted)' :
-                         'var(--text-primary)',
-                  border: points?.type === 'exact' ? '1px solid var(--secondary)' :
-                          points?.type === 'correct' ? '1px solid var(--success)' :
-                          '1px solid var(--border)'
-                }}>
-                  {pred.homeScore} - {pred.awayScore}
-                </div>
-
-                {points && (
-                  <span style={{
-                    fontSize: '12px', fontWeight: '700',
-                    color: points.type === 'exact' ? 'var(--secondary)' :
-                           points.type === 'correct' ? 'var(--success)' :
-                           'var(--text-muted)'
+              {pred ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{
+                    background: 'var(--bg-card)', borderRadius: '8px',
+                    padding: '4px 12px', fontWeight: '800', fontSize: '15px',
+                    color: points?.type === 'exact' ? 'var(--secondary)' :
+                          points?.type === 'correct' ? 'var(--success)' :
+                          points?.type === 'wrong' ? 'var(--text-muted)' : 'var(--text-primary)',
+                    border: points?.type === 'exact' ? '1px solid var(--secondary)' :
+                            points?.type === 'correct' ? '1px solid var(--success)' :
+                            '1px solid var(--border)'
                   }}>
-                    {points.type === 'exact' ? `⭐+${points.points}` :
-                     points.type === 'correct' ? `✅+${points.points}` :
-                     '❌'}
+                    {pred.homeScore} - {pred.awayScore}
+                  </div>
+
+                  {points && (
+                    <span style={{
+                      fontSize: '12px', fontWeight: '700',
+                      color: points.type === 'exact' ? 'var(--secondary)' :
+                            points.type === 'correct' ? 'var(--success)' : 'var(--text-muted)'
+                    }}>
+                      {points.type !== 'wrong' ? `+${points.points}` : '❌'}
+                      {pred.isWildcard && points.points > 0 && ' 🃏'}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  No predijo 😅
+                </span>
+              )}
+            </div>
+
+            {/* Detalle de resolución predicha */}
+            {pred && pred.predictedResolution && (
+              <div style={{
+                marginTop: '4px', paddingLeft: '28px',
+                fontSize: '10px', color: 'var(--text-muted)',
+                display: 'flex', gap: '8px', flexWrap: 'wrap'
+              }}>
+                <span>
+                  {pred.predictedResolution === 'extra_time' ? '⏱️ Prórroga' : '⚽ Penales'}
+                  {' → '}
+                  <b style={{ color: 'var(--text-secondary)' }}>{pred.penaltyWinner}</b>
+                </span>
+                {pred.predictedResolution === 'penalties' &&
+                pred.penaltyHome !== null && pred.penaltyAway !== null && (
+                  <span>
+                    ({pred.penaltyHome}-{pred.penaltyAway})
                   </span>
                 )}
               </div>
-            ) : (
-              <span style={{
-                fontSize: '12px', color: 'var(--text-muted)',
-                fontStyle: 'italic'
+            )}
+
+            {/* Desglose de puntos en eliminatorias */}
+            {points && points.breakdown && points.breakdown.length > 0 && isFinished && (
+              <div style={{
+                marginTop: '6px', paddingLeft: '28px',
+                display: 'flex', flexDirection: 'column', gap: '2px'
               }}>
-                No predijo 😅
-              </span>
+                {points.breakdown.map((b, i) => (
+                  <div key={i} style={{
+                    fontSize: '10px', color: 'var(--text-muted)',
+                    display: 'flex', justifyContent: 'space-between'
+                  }}>
+                    <span>{b.label}</span>
+                    <span style={{
+                      fontWeight: '700',
+                      color: b.points > 0 ? 'var(--success)' : 'var(--text-muted)'
+                    }}>
+                      {b.points > 0 ? `+${b.points}` : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )

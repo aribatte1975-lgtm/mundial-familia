@@ -71,27 +71,32 @@ const Admin = () => {
     }
   }
 
-  const handleUpdateScore = async (matchId, homeScore, awayScore, penaltyData = null) => {
-  const updates = {
-    homeScore: parseInt(homeScore),
-    awayScore: parseInt(awayScore),
-    status: 'finished'
-  }
+  const handleUpdateScore = async (matchId, homeScore, awayScore, resolutionData = null) => {
+    const updates = {
+      homeScore: parseInt(homeScore),
+      awayScore: parseInt(awayScore),
+      status: 'finished',
+      resolutionType: resolutionData?.resolutionType || 'regular',
+      isPenalty: resolutionData?.resolutionType === 'penalties',
+      penaltyWinner: resolutionData?.penaltyWinner || null,
+      penaltyHome: resolutionData?.penaltyHome !== undefined ? parseInt(resolutionData.penaltyHome) : null,
+      penaltyAway: resolutionData?.penaltyAway !== undefined ? parseInt(resolutionData.penaltyAway) : null
+    }
 
-  if (penaltyData) {
-    updates.isPenalty = penaltyData.isPenalty
-    updates.penaltyWinner = penaltyData.penaltyWinner
-    updates.penaltyHome = penaltyData.penaltyHome
-    updates.penaltyAway = penaltyData.penaltyAway
-  }
+    await updateMatch(matchId, updates)
+    await loadData()
 
-  await updateMatch(matchId, updates)
-  await loadData()
-  showToastMsg(penaltyData?.isPenalty
-    ? '¡Resultado con penales actualizado! ⚽'
-    : '¡Resultado actualizado! ✅'
-  )
-}
+    const isDraw = parseInt(homeScore) === parseInt(awayScore)
+    if (isDraw && !resolutionData?.resolutionType) {
+      showToastMsg('Empate guardado ✅', 'success')
+    } else if (resolutionData?.resolutionType === 'penalties') {
+      showToastMsg('¡Resultado con penales guardado! ⚽', 'success')
+    } else if (resolutionData?.resolutionType === 'extra_time') {
+      showToastMsg('¡Resultado con prórroga guardado! ⏱️', 'success')
+    } else {
+      showToastMsg('¡Resultado actualizado! ✅', 'success')
+    }
+  }
 
   const handleDeleteMatch = async (matchId) => {
   if (confirm('¿Eliminar este partido?')) {
@@ -389,38 +394,38 @@ const MatchResultAdmin = ({ match, onUpdateScore, onDelete, onReset }) => {
   const [homeScore, setHomeScore] = useState(match.homeScore ?? '')
   const [awayScore, setAwayScore] = useState(match.awayScore ?? '')
   const [expanded, setExpanded] = useState(false)
-  
-  // Penales
-  const [isPenalty, setIsPenalty] = useState(match.isPenalty || false)
+  const [resolutionType, setResolutionType] = useState(match.resolutionType || null)
   const [penaltyWinner, setPenaltyWinner] = useState(match.penaltyWinner || null)
   const [penaltyHome, setPenaltyHome] = useState(match.penaltyHome ?? '')
   const [penaltyAway, setPenaltyAway] = useState(match.penaltyAway ?? '')
 
-  const isKnockout = ['Dieciseisavos', 'Octavos de Final', 'Cuartos de Final', 'Semifinal', 'Tercer Puesto', 'Final'].includes(match.stage)
+  const isKnockout = ['Dieciseisavos','Octavos de Final','Cuartos de Final','Semifinal','Tercer Puesto','Final'].includes(match.stage)
   const isDraw = homeScore !== '' && awayScore !== '' && parseInt(homeScore) === parseInt(awayScore)
 
   const matchDate = new Date(match.datetime)
   const dateStr = format(matchDate, "dd/MM HH:mm", { locale: es })
 
   const handleSave = () => {
-    const penaltyData = isKnockout && isDraw && isPenalty ? {
-      isPenalty: true,
+    const resolutionData = isKnockout && isDraw && resolutionType ? {
+      resolutionType,
       penaltyWinner,
-      penaltyHome: parseInt(penaltyHome),
-      penaltyAway: parseInt(penaltyAway)
-    } : {
-      isPenalty: false,
-      penaltyWinner: null,
-      penaltyHome: null,
-      penaltyAway: null
-    }
+      penaltyHome: resolutionType === 'penalties' ? penaltyHome : null,
+      penaltyAway: resolutionType === 'penalties' ? penaltyAway : null
+    } : { resolutionType: 'regular' }
 
-    onUpdateScore(match.id, homeScore, awayScore, penaltyData)
+    onUpdateScore(match.id, homeScore, awayScore, resolutionData)
   }
+
+  const canSave = homeScore !== '' && awayScore !== '' && (
+    !isKnockout || !isDraw || !resolutionType ||
+    resolutionType === 'regular' ||
+    (resolutionType === 'extra_time' && !!penaltyWinner) ||
+    (resolutionType === 'penalties' && !!penaltyWinner)
+  )
 
   return (
     <div className="admin-match-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-      <div 
+      <div
         style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
         onClick={() => setExpanded(!expanded)}
       >
@@ -434,8 +439,8 @@ const MatchResultAdmin = ({ match, onUpdateScore, onDelete, onReset }) => {
         </span>
         <span style={{ fontSize: '14px' }}>{match.awayFlag}</span>
         <span className={`match-status ${match.status}`} style={{ fontSize: '9px' }}>
-          {match.status === 'finished' 
-            ? `${match.homeScore}-${match.awayScore}${match.isPenalty ? ' (pen)' : ''}` 
+          {match.status === 'finished'
+            ? `${match.homeScore}-${match.awayScore}${match.resolutionType === 'penalties' ? ' (pen)' : match.resolutionType === 'extra_time' ? ' (pró)' : ''}`
             : '⏳'}
         </span>
         {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -447,12 +452,12 @@ const MatchResultAdmin = ({ match, onUpdateScore, onDelete, onReset }) => {
             📍 {match.venue || 'Sede por confirmar'}
           </p>
 
-          {/* Resultado 90 min */}
           {isKnockout && (
             <div style={{ textAlign: 'center', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
               Resultado en 90 minutos
             </div>
           )}
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
             <span style={{ fontSize: '12px', maxWidth: '80px', textAlign: 'right' }}>{match.homeTeam}</span>
             <input type="number" className="admin-score-input" value={homeScore}
@@ -463,98 +468,137 @@ const MatchResultAdmin = ({ match, onUpdateScore, onDelete, onReset }) => {
             <span style={{ fontSize: '12px', maxWidth: '80px' }}>{match.awayTeam}</span>
           </div>
 
-          {/* Sección penales - solo eliminatorias y empate */}
+          {/* Resolución en eliminatorias con empate */}
           {isKnockout && isDraw && (
             <div className="animate-slide-up" style={{
               marginTop: '12px', padding: '12px',
-              background: 'rgba(245,158,11,0.08)',
+              background: 'rgba(245,158,11,0.06)',
               border: '1px solid rgba(245,158,11,0.2)',
               borderRadius: 'var(--radius-sm)'
             }}>
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                fontSize: '12px', fontWeight: '700', color: 'var(--warning)',
-                cursor: 'pointer', marginBottom: '10px'
+              <div style={{
+                fontSize: '11px', fontWeight: '700',
+                color: 'var(--warning)', marginBottom: '8px', textAlign: 'center'
               }}>
-                <input
-                  type="checkbox"
-                  checked={isPenalty}
-                  onChange={(e) => setIsPenalty(e.target.checked)}
-                />
-                ⚽ ¿Se definió por penales?
-              </label>
+                ⚽ Empate — ¿Cómo se definió?
+              </div>
 
-              {isPenalty && (
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                {[
+                  { key: 'extra_time', label: '⏱️ Prórroga' },
+                  { key: 'penalties', label: '⚽ Penales' }
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => {
+                      setResolutionType(opt.key)
+                      setPenaltyWinner(null)
+                      setPenaltyHome('')
+                      setPenaltyAway('')
+                    }}
+                    style={{
+                      flex: 1, padding: '8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: resolutionType === opt.key
+                        ? '2px solid var(--warning)' : '1px solid var(--border)',
+                      background: resolutionType === opt.key
+                        ? 'rgba(245,158,11,0.1)' : 'var(--bg-dark)',
+                      cursor: 'pointer', textAlign: 'center',
+                      fontSize: '11px', fontWeight: '700',
+                      color: resolutionType === opt.key
+                        ? 'var(--warning)' : 'var(--text-secondary)',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {resolutionType && (
                 <div className="animate-fade-in">
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                  <div style={{
+                    fontSize: '11px', color: 'var(--text-muted)',
+                    marginBottom: '6px', textAlign: 'center'
+                  }}>
                     ¿Quién clasificó?
                   </div>
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
-                    <button
-                      onClick={() => setPenaltyWinner(match.homeTeam)}
-                      style={{
-                        flex: 1, padding: '8px',
-                        borderRadius: 'var(--radius-sm)',
-                        border: penaltyWinner === match.homeTeam
-                          ? '2px solid var(--success)' : '1px solid var(--border)',
-                        background: penaltyWinner === match.homeTeam
-                          ? 'rgba(16,185,129,0.1)' : 'var(--bg-dark)',
-                        cursor: 'pointer', textAlign: 'center',
-                        fontSize: '11px', fontWeight: '600',
-                        color: penaltyWinner === match.homeTeam
-                          ? 'var(--success)' : 'var(--text-secondary)'
-                      }}
-                    >
-                      {match.homeFlag} {match.homeTeam}
-                    </button>
-                    <button
-                      onClick={() => setPenaltyWinner(match.awayTeam)}
-                      style={{
-                        flex: 1, padding: '8px',
-                        borderRadius: 'var(--radius-sm)',
-                        border: penaltyWinner === match.awayTeam
-                          ? '2px solid var(--success)' : '1px solid var(--border)',
-                        background: penaltyWinner === match.awayTeam
-                          ? 'rgba(16,185,129,0.1)' : 'var(--bg-dark)',
-                        cursor: 'pointer', textAlign: 'center',
-                        fontSize: '11px', fontWeight: '600',
-                        color: penaltyWinner === match.awayTeam
-                          ? 'var(--success)' : 'var(--text-secondary)'
-                      }}
-                    >
-                      {match.awayFlag} {match.awayTeam}
-                    </button>
+                    {[
+                      { team: match.homeTeam, flag: match.homeFlag },
+                      { team: match.awayTeam, flag: match.awayFlag }
+                    ].map(({ team, flag }) => (
+                      <button
+                        key={team}
+                        onClick={() => setPenaltyWinner(team)}
+                        style={{
+                          flex: 1, padding: '8px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: penaltyWinner === team
+                            ? '2px solid var(--success)' : '1px solid var(--border)',
+                          background: penaltyWinner === team
+                            ? 'rgba(16,185,129,0.1)' : 'var(--bg-dark)',
+                          cursor: 'pointer', textAlign: 'center',
+                          fontSize: '11px', fontWeight: '600',
+                          color: penaltyWinner === team
+                            ? 'var(--success)' : 'var(--text-secondary)'
+                        }}
+                      >
+                        {flag} {team}
+                        {penaltyWinner === team && <span style={{ marginLeft: '4px' }}>✅</span>}
+                      </button>
+                    ))}
                   </div>
 
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Resultado penales:
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                    <input type="number" className="admin-score-input" value={penaltyHome}
-                      onChange={(e) => setPenaltyHome(e.target.value)} min="0"
-                      style={{ width: '45px' }} />
-                    <span style={{ fontWeight: '700', color: 'var(--warning)' }}>-</span>
-                    <input type="number" className="admin-score-input" value={penaltyAway}
-                      onChange={(e) => setPenaltyAway(e.target.value)} min="0"
-                      style={{ width: '45px' }} />
-                  </div>
+                  {/* Resultado penales */}
+                  {resolutionType === 'penalties' && penaltyWinner && (
+                    <div className="animate-fade-in">
+                      <div style={{
+                        fontSize: '11px', color: 'var(--text-muted)',
+                        marginBottom: '6px', textAlign: 'center'
+                      }}>
+                        Resultado penales:
+                      </div>
+                      <div style={{
+                        display: 'flex', alignItems: 'center',
+                        gap: '8px', justifyContent: 'center'
+                      }}>
+                        <span style={{ fontSize: '12px' }}>{match.homeTeam}</span>
+                        <input type="number" className="admin-score-input"
+                          value={penaltyHome} min="0"
+                          onChange={(e) => setPenaltyHome(e.target.value)}
+                          style={{ width: '45px' }} />
+                        <span style={{ fontWeight: '700', color: 'var(--warning)' }}>-</span>
+                        <input type="number" className="admin-score-input"
+                          value={penaltyAway} min="0"
+                          onChange={(e) => setPenaltyAway(e.target.value)}
+                          style={{ width: '45px' }} />
+                        <span style={{ fontSize: '12px' }}>{match.awayTeam}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <button className="btn btn-success btn-small" style={{ flex: 1 }}
+            <button
+              className="btn btn-success btn-small"
+              style={{ flex: 1 }}
               onClick={handleSave}
-              disabled={homeScore === '' || awayScore === '' || 
-                (isKnockout && isDraw && isPenalty && !penaltyWinner)}>
+              disabled={!canSave}
+            >
               <Save size={14} /> Resultado
             </button>
             {match.status === 'finished' && (
               <button className="btn btn-secondary btn-small" onClick={() => onReset(match.id)}>↩️</button>
             )}
-            <button className="btn btn-small" style={{ background: 'var(--danger)', color: 'white', width: 'auto' }}
-              onClick={() => onDelete(match.id)}>
+            <button
+              className="btn btn-small"
+              style={{ background: 'var(--danger)', color: 'white', width: 'auto' }}
+              onClick={() => onDelete(match.id)}
+            >
               <Trash2 size={14} />
             </button>
           </div>
@@ -563,6 +607,7 @@ const MatchResultAdmin = ({ match, onUpdateScore, onDelete, onReset }) => {
     </div>
   )
 }
+
 
 // ===== COMPONENTE TAB ELIMINATORIAS =====
 const KnockoutTab = ({ onToast, onReload }) => {

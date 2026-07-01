@@ -87,8 +87,9 @@ export const getMatches = async () => {
     status: m.status,
     isPenalty: m.is_penalty || false,
     penaltyWinner: m.penalty_winner || null,
-    penaltyHome: m.penalty_home,
-    penaltyAway: m.penalty_away
+    penaltyHome: m.penalty_home ?? null,
+    penaltyAway: m.penalty_away ?? null,
+    resolutionType: m.resolution_type || null // 'regular', 'extra_time', 'penalties'
   }))
 }
 
@@ -107,8 +108,9 @@ export const getMatchById = async (id) => {
     status: data.status,
     isPenalty: data.is_penalty || false,
     penaltyWinner: data.penalty_winner || null,
-    penaltyHome: data.penalty_home,
-    penaltyAway: data.penalty_away
+    penaltyHome: data.penalty_home ?? null,
+    penaltyAway: data.penalty_away ?? null,
+    resolutionType: data.resolution_type || null
   }
 }
 
@@ -147,6 +149,7 @@ export const updateMatch = async (matchId, updates) => {
   if (updates.penaltyWinner !== undefined) dbUpdates.penalty_winner = updates.penaltyWinner
   if (updates.penaltyHome !== undefined) dbUpdates.penalty_home = updates.penaltyHome
   if (updates.penaltyAway !== undefined) dbUpdates.penalty_away = updates.penaltyAway
+  if (updates.resolutionType !== undefined) dbUpdates.resolution_type = updates.resolutionType
 
   const { data, error } = await supabase
     .from('matches')
@@ -155,59 +158,35 @@ export const updateMatch = async (matchId, updates) => {
     .select()
     .single()
 
-  if (error) {
-    console.error('updateMatch:', error)
-    return null
-  }
+  if (error) { console.error('updateMatch:', error); return null }
 
   const result = {
     id: data.id,
-    homeTeam: data.home_team,
-    homeFlag: data.home_flag,
-    awayTeam: data.away_team,
-    awayFlag: data.away_flag,
-    group: data.match_group,
-    stage: data.stage,
-    datetime: data.datetime,
-    venue: data.venue,
-    homeScore: data.home_score,
-    awayScore: data.away_score,
-    status: data.status
+    homeTeam: data.home_team, homeFlag: data.home_flag,
+    awayTeam: data.away_team, awayFlag: data.away_flag,
+    group: data.match_group, stage: data.stage,
+    datetime: data.datetime, venue: data.venue,
+    homeScore: data.home_score, awayScore: data.away_score,
+    status: data.status,
+    isPenalty: data.is_penalty || false,
+    penaltyWinner: data.penalty_winner || null,
+    penaltyHome: data.penalty_home ?? null,
+    penaltyAway: data.penalty_away ?? null,
+    resolutionType: data.resolution_type || null
   }
 
-  // ✅ Propagar automáticamente en eliminatorias
-  if (
-    updates.status === 'finished' &&
-    updates.homeScore !== undefined &&
-    updates.awayScore !== undefined &&
-    ['Dieciseisavos', 'Octavos de Final', 'Cuartos de Final', 'Semifinal'].includes(data.stage)
-  ) {
-    // Si hay penales, usar el penaltyWinner para propagar
-    const matchForPropagation = {
-      ...result,
-      // Si es penalty, forzar el ganador correcto
-      homeScore: data.is_penalty && data.penalty_winner === data.home_team
-        ? 1 : result.homeScore,
-      awayScore: data.is_penalty && data.penalty_winner === data.away_team
-        ? 1 : result.awayScore,
-    }
+  // Propagar bracket solo si hay ganador claro
+  const isKnockout = ['Dieciseisavos','Octavos de Final','Cuartos de Final','Semifinal'].includes(data.stage)
+  const homeWins = result.homeScore > result.awayScore
+  const awayWins = result.awayScore > result.homeScore
+  const isPenaltyWithWinner = result.isPenalty && !!result.penaltyWinner
+  const isExtraTimeWithWinner = result.resolutionType === 'extra_time' && (homeWins || awayWins)
+  const hasWinner = homeWins || awayWins || isPenaltyWithWinner || isExtraTimeWithWinner
 
-    // Si es empate y hay penalty_winner, ajustar para que propague bien
-    if (data.is_penalty && data.penalty_winner) {
-      if (data.penalty_winner === data.home_team) {
-        matchForPropagation.homeScore = result.homeScore + 1
-        matchForPropagation.awayScore = result.awayScore
-      } else {
-        matchForPropagation.homeScore = result.homeScore
-        matchForPropagation.awayScore = result.awayScore + 1
-      }
-    }
-
-    const propagation = await propagateBracket(matchForPropagation)
+  if (updates.status === 'finished' && isKnockout && hasWinner) {
+    const propagation = await propagateBracket(result)
     if (propagation?.propagated) {
       console.log(`🏆 ${propagation.winner} avanzó a ${propagation.nextMatch}`)
-    } else if (propagation?.error) {
-      console.warn(`⚠️ ${propagation.error}`)
     }
   }
 
@@ -236,9 +215,10 @@ export const getPredictions = async () => {
     homeScore: p.home_score, awayScore: p.away_score,
     isWildcard: p.is_wildcard || false,
     predictsDraw: p.predicts_draw || false,
+    predictedResolution: p.predicted_resolution || null, // 'extra_time' o 'penalties'
     penaltyWinner: p.penalty_winner || null,
-    penaltyHome: p.penalty_home,
-    penaltyAway: p.penalty_away,
+    penaltyHome: p.penalty_home ?? null,
+    penaltyAway: p.penalty_away ?? null,
     createdAt: p.created_at
   }))
 }
@@ -250,12 +230,14 @@ export const getPredictionsByUser = async (userId) => {
     .eq('user_id', userId)
   if (error) { console.error('getPredictionsByUser:', error); return [] }
   return data.map(p => ({
-    id: p.id,
-    userId: p.user_id,
-    matchId: p.match_id,
-    homeScore: p.home_score,
-    awayScore: p.away_score,
-    isWildcard: p.is_wildcard || false
+    id: p.id, userId: p.user_id, matchId: p.match_id,
+    homeScore: p.home_score, awayScore: p.away_score,
+    isWildcard: p.is_wildcard || false,
+    predictsDraw: p.predicts_draw || false,
+    predictedResolution: p.predicted_resolution || null,
+    penaltyWinner: p.penalty_winner || null,
+    penaltyHome: p.penalty_home ?? null,
+    penaltyAway: p.penalty_away ?? null
   }))
 }
 
@@ -266,12 +248,14 @@ export const getPredictionsByMatch = async (matchId) => {
     .eq('match_id', matchId)
   if (error) { console.error('getPredictionsByMatch:', error); return [] }
   return data.map(p => ({
-    id: p.id,
-    userId: p.user_id,
-    matchId: p.match_id,
-    homeScore: p.home_score,
-    awayScore: p.away_score,
-    isWildcard: p.is_wildcard || false
+    id: p.id, userId: p.user_id, matchId: p.match_id,
+    homeScore: p.home_score, awayScore: p.away_score,
+    isWildcard: p.is_wildcard || false,
+    predictsDraw: p.predicts_draw || false,
+    predictedResolution: p.predicted_resolution || null,
+    penaltyWinner: p.penalty_winner || null,
+    penaltyHome: p.penalty_home ?? null,
+    penaltyAway: p.penalty_away ?? null
   }))
 }
 
@@ -289,13 +273,14 @@ export const getPrediction = async (userId, matchId) => {
     homeScore: data.home_score, awayScore: data.away_score,
     isWildcard: data.is_wildcard || false,
     predictsDraw: data.predicts_draw || false,
+    predictedResolution: data.predicted_resolution || null,
     penaltyWinner: data.penalty_winner || null,
-    penaltyHome: data.penalty_home,
-    penaltyAway: data.penalty_away
+    penaltyHome: data.penalty_home ?? null,
+    penaltyAway: data.penalty_away ?? null
   }
 }
 
-export const savePrediction = async (userId, matchId, homeScore, awayScore, isWildcard = false, penaltyData = null) => {
+export const savePrediction = async (userId, matchId, homeScore, awayScore, isWildcard = false, resolutionData = null) => {
   const match = await getMatchById(matchId)
   if (match && new Date(match.datetime) <= new Date()) {
     return { error: '¡El partido ya comenzó! No puedes predecir.' }
@@ -310,16 +295,23 @@ export const savePrediction = async (userId, matchId, homeScore, awayScore, isWi
     }
   }
 
+  const isDraw = parseInt(homeScore) === parseInt(awayScore)
+
   const upsertData = {
     user_id: userId,
     match_id: matchId,
     home_score: homeScore,
     away_score: awayScore,
     is_wildcard: isWildcard,
-    predicts_draw: homeScore === awayScore,
-    penalty_winner: penaltyData?.penaltyWinner || null,
-    penalty_home: penaltyData?.penaltyHome || null,
-    penalty_away: penaltyData?.penaltyAway || null,
+    predicts_draw: isDraw,
+    // Resolución solo si predijo empate
+    predicted_resolution: isDraw ? (resolutionData?.predictedResolution || null) : null,
+    penalty_winner: isDraw && resolutionData?.predictedResolution === 'penalties'
+      ? resolutionData?.penaltyWinner || null : null,
+    penalty_home: isDraw && resolutionData?.predictedResolution === 'penalties'
+      ? resolutionData?.penaltyHome ?? null : null,
+    penalty_away: isDraw && resolutionData?.predictedResolution === 'penalties'
+      ? resolutionData?.penaltyAway ?? null : null,
     updated_at: new Date().toISOString()
   }
 
@@ -340,68 +332,96 @@ export const calculatePoints = (prediction, match, settings) => {
 
   const s = settings || { pointsExact: 5, pointsCorrect: 3 }
   const multiplier = prediction.isWildcard ? 2 : 1
-  const isKnockout = ['Dieciseisavos', 'Octavos de Final', 'Cuartos de Final', 'Semifinal', 'Tercer Puesto', 'Final'].includes(match.stage)
 
-  let totalPoints = 0
-  let breakdown = []
+  const isKnockout = [
+    'Dieciseisavos', 'Octavos de Final', 'Cuartos de Final',
+    'Semifinal', 'Tercer Puesto', 'Final'
+  ].includes(match.stage)
 
-  // 1) Resultado en 90 minutos (exacto o ganador)
-  if (prediction.homeScore === match.homeScore &&
-      prediction.awayScore === match.awayScore) {
-    totalPoints += s.pointsExact
-    breakdown.push({ label: 'Resultado exacto 90min', points: s.pointsExact })
-  } else {
-    const predResult = prediction.homeScore > prediction.awayScore ? 'home'
-      : prediction.homeScore < prediction.awayScore ? 'away' : 'draw'
-    const matchResult = match.homeScore > match.awayScore ? 'home'
-      : match.homeScore < match.awayScore ? 'away' : 'draw'
+  let basePoints = 0
+  const breakdown = []
 
-    if (predResult === matchResult) {
-      totalPoints += s.pointsCorrect
-      breakdown.push({ label: 'Ganador/empate correcto', points: s.pointsCorrect })
+  // --- 1) Resultado en 90 minutos ---
+  const predHome = prediction.homeScore
+  const predAway = prediction.awayScore
+  const realHome = match.homeScore
+  const realAway = match.awayScore
+
+  const predResult = predHome > predAway ? 'home' : predHome < predAway ? 'away' : 'draw'
+  const realResult = realHome > realAway ? 'home' : realHome < realAway ? 'away' : 'draw'
+
+  const exactMatch = predHome === realHome && predAway === realAway
+
+  if (exactMatch) {
+    basePoints += s.pointsExact
+    breakdown.push({ label: '⭐ Resultado exacto 90min', points: s.pointsExact })
+  } else if (predResult === realResult) {
+    basePoints += s.pointsCorrect
+    breakdown.push({ label: '✅ Acertó resultado 90min', points: s.pointsCorrect })
+  }
+
+  // --- 2) Bonus eliminatorias (solo si predijo empate y fue empate) ---
+  if (isKnockout && realResult === 'draw' && predResult === 'draw') {
+
+    // Suplementario
+    if (match.resolutionType === 'extra_time') {
+      if (prediction.predictedResolution === 'extra_time') {
+        // Acertó suplementario, ahora verificar quién clasifica
+        const matchWinner = match.homeScore > match.awayScore
+          ? match.homeTeam : match.awayTeam
+
+        // En suplementario el ganador se ve en el score normal del match
+        // (el admin carga el score del tiempo extra)
+        // Verificamos si el jugador eligió el equipo correcto
+        if (prediction.penaltyWinner === matchWinner) {
+          basePoints += s.pointsCorrect
+          breakdown.push({ label: '🎯 Acertó suplementario + clasificado', points: s.pointsCorrect })
+        } else {
+          // Solo acertó el tipo pero no el equipo
+          breakdown.push({ label: '⚽ Acertó suplementario (equipo incorrecto)', points: 0 })
+        }
+      }
+    }
+
+    // Penales
+    if (match.resolutionType === 'penalties' || match.isPenalty) {
+      if (prediction.predictedResolution === 'penalties') {
+        // Acertó que fue a penales → ahora verificar quién clasifica
+        if (prediction.penaltyWinner && match.penaltyWinner &&
+            prediction.penaltyWinner === match.penaltyWinner) {
+          basePoints += s.pointsCorrect
+          breakdown.push({ label: '🎯 Acertó penales + clasificado', points: s.pointsCorrect })
+
+          // Bonus adicional: resultado exacto de penales
+          if (prediction.penaltyHome !== null && prediction.penaltyAway !== null &&
+              match.penaltyHome !== null && match.penaltyAway !== null &&
+              prediction.penaltyHome === match.penaltyHome &&
+              prediction.penaltyAway === match.penaltyAway) {
+            basePoints += s.pointsCorrect
+            breakdown.push({ label: '⚽ Penales exactos', points: s.pointsCorrect })
+          }
+        } else if (prediction.penaltyWinner && match.penaltyWinner) {
+          // Acertó penales pero no el clasificado
+          breakdown.push({ label: '⚽ Acertó penales (clasificado incorrecto)', points: 0 })
+        }
+      }
     }
   }
 
-  // 2) Bonus penales (solo en eliminatorias con penales)
-  if (isKnockout && match.isPenalty) {
-    // Acertó que iba a penales (predijo empate y fue empate)
-    if (prediction.predictsDraw && match.homeScore === match.awayScore) {
-      totalPoints += s.pointsCorrect
-      breakdown.push({ label: 'Acertó penales', points: s.pointsCorrect })
-    }
+  const totalPoints = basePoints * multiplier
 
-    // Acertó quién clasifica en penales
-    if (prediction.penaltyWinner && match.penaltyWinner &&
-        prediction.penaltyWinner === match.penaltyWinner) {
-      totalPoints += s.pointsCorrect
-      breakdown.push({ label: 'Acertó clasificado', points: s.pointsCorrect })
-    }
-
-    // Acertó resultado exacto de penales
-    if (prediction.penaltyHome !== null && prediction.penaltyAway !== null &&
-        match.penaltyHome !== null && match.penaltyAway !== null &&
-        prediction.penaltyHome === match.penaltyHome &&
-        prediction.penaltyAway === match.penaltyAway) {
-      totalPoints += s.pointsExact
-      breakdown.push({ label: 'Penales exactos', points: s.pointsExact })
-    }
-  }
-
-  // Aplicar multiplicador del comodín
-  totalPoints = totalPoints * multiplier
-
-  // Determinar tipo para el estilo visual
   const type = totalPoints === 0 ? 'wrong'
-    : breakdown.some(b => b.label.includes('exacto')) ? 'exact'
+    : exactMatch ? 'exact'
     : 'correct'
 
   return {
     points: totalPoints,
     type,
     isWildcard: prediction.isWildcard,
-    basePoints: totalPoints / multiplier,
+    basePoints,
     breakdown,
-    isPenalty: match.isPenalty
+    isKnockout,
+    resolutionType: match.resolutionType
   }
 }
 
@@ -1073,22 +1093,47 @@ const BRACKET_MAP = {
 }
 
 const getMatchWinner = (match) => {
+  // Si hubo penales, manda el ganador por penales
+  if (match.isPenalty && match.penaltyWinner) {
+    if (match.penaltyWinner === match.homeTeam) {
+      return { name: match.homeTeam, flag: match.homeFlag }
+    }
+    if (match.penaltyWinner === match.awayTeam) {
+      return { name: match.awayTeam, flag: match.awayFlag }
+    }
+  }
+
+  // Si no hubo penales, usar resultado normal
   if (match.homeScore > match.awayScore) {
     return { name: match.homeTeam, flag: match.homeFlag }
   }
   if (match.awayScore > match.homeScore) {
     return { name: match.awayTeam, flag: match.awayFlag }
   }
+
+  // Empate sin ganador definido
   return null
 }
 
 const getMatchLoser = (match) => {
+  // Si hubo penales, el perdedor es el otro
+  if (match.isPenalty && match.penaltyWinner) {
+    if (match.penaltyWinner === match.homeTeam) {
+      return { name: match.awayTeam, flag: match.awayFlag }
+    }
+    if (match.penaltyWinner === match.awayTeam) {
+      return { name: match.homeTeam, flag: match.homeFlag }
+    }
+  }
+
+  // Si no hubo penales, usar resultado normal
   if (match.homeScore > match.awayScore) {
     return { name: match.awayTeam, flag: match.awayFlag }
   }
   if (match.awayScore > match.homeScore) {
     return { name: match.homeTeam, flag: match.homeFlag }
   }
+
   return null
 }
 

@@ -52,35 +52,38 @@ const Predictions = () => {
     setLoading(false)
   }
 
-  const handleSave = async (matchId, homeScore, awayScore, isWildcard = false, penaltyData = null) => {
-    setSaving(matchId)
-    const result = await savePrediction(user.id, matchId, homeScore, awayScore, isWildcard, penaltyData)
-    setSaving(null)
-    if (result.error) {
-      showToast(result.error, 'error')
-    } else {
-      setPredictions(prev => ({
-        ...prev,
-        [matchId]: { 
-          userId: user.id, matchId, homeScore, awayScore, isWildcard,
-          predictsDraw: homeScore === awayScore,
-          penaltyWinner: penaltyData?.penaltyWinner || null,
-          penaltyHome: penaltyData?.penaltyHome ?? null,
-          penaltyAway: penaltyData?.penaltyAway ?? null
-        }
-      }))
-      const remaining = await getWildcardsRemaining(user.id)
-      setWildcardsRemaining(remaining)
-      showToast(
-        isWildcard 
-          ? '🃏 ¡Predicción con COMODÍN guardada! x2' 
-          : penaltyData?.penaltyWinner
-            ? '⚽ ¡Predicción con penales guardada!'
+  const handleSave = async (matchId, homeScore, awayScore, isWildcard = false, resolutionData = null) => {
+  setSaving(matchId)
+  const result = await savePrediction(user.id, matchId, homeScore, awayScore, isWildcard, resolutionData)
+  setSaving(null)
+  if (result.error) {
+    showToast(result.error, 'error')
+  } else {
+    setPredictions(prev => ({
+      ...prev,
+      [matchId]: { 
+        userId: user.id, matchId, homeScore, awayScore, isWildcard,
+        predictsDraw: homeScore === awayScore,
+        predictedResolution: resolutionData?.predictedResolution || null,
+        penaltyWinner: resolutionData?.penaltyWinner || null,
+        penaltyHome: resolutionData?.penaltyHome ?? null,
+        penaltyAway: resolutionData?.penaltyAway ?? null
+      }
+    }))
+    const remaining = await getWildcardsRemaining(user.id)
+    setWildcardsRemaining(remaining)
+    showToast(
+      isWildcard 
+        ? '🃏 ¡Predicción con COMODÍN guardada! x2' 
+        : resolutionData?.predictedResolution === 'penalties'
+          ? '⚽ ¡Predicción con penales guardada!'
+          : resolutionData?.predictedResolution === 'extra_time'
+            ? '⏱️ ¡Predicción con suplementario guardada!'
             : '¡Predicción guardada! ⚽', 
-        'success'
-      )
-    }
+      'success'
+    )
   }
+}
 
   const showToast = (message, type) => {
     setToast({ message, type })
@@ -195,7 +198,8 @@ const Predictions = () => {
                   initialHome={existing?.homeScore ?? 0}
                   initialAway={existing?.awayScore ?? 0}
                   initialWildcard={existing?.isWildcard ?? false}
-                  initialPenaltyData={existing?.penaltyWinner ? {
+                  initialPenaltyData={existing?.predictedResolution ? {
+                    predictedResolution: existing.predictedResolution,
                     penaltyWinner: existing.penaltyWinner,
                     penaltyHome: existing.penaltyHome,
                     penaltyAway: existing.penaltyAway

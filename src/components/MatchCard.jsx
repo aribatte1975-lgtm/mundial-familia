@@ -58,6 +58,62 @@ const MatchCard = ({ match, prediction, showPrediction = false, children }) => {
         </div>
       </div>
 
+      {/* Indicador resolución: suplementario o penales */}
+      {isFinished && match.resolutionType && match.resolutionType !== 'regular' && (
+        <div style={{
+          textAlign: 'center', marginTop: '6px', padding: '6px 12px',
+          background: match.resolutionType === 'penalties'
+            ? 'rgba(245,158,11,0.08)' : 'rgba(59,130,246,0.08)',
+          border: `1px solid ${match.resolutionType === 'penalties'
+            ? 'rgba(245,158,11,0.2)' : 'rgba(59,130,246,0.2)'}`,
+          borderRadius: 'var(--radius-sm)'
+        }}>
+          {match.resolutionType === 'extra_time' && (
+            <>
+              <div style={{ fontSize: '11px', color: 'var(--info)', fontWeight: '700' }}>
+                ⏱️ Prórroga
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Clasifica: <b style={{ color: 'var(--success)' }}>
+                  {match.penaltyWinner}
+                </b>
+              </div>
+            </>
+          )}
+          {match.resolutionType === 'penalties' && (
+            <>
+              <div style={{ fontSize: '11px', color: 'var(--warning)', fontWeight: '700' }}>
+                ⚽ Penales
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: '8px', marginTop: '4px'
+              }}>
+                <span style={{
+                  fontSize: '11px', fontWeight: match.penaltyWinner === match.homeTeam ? '700' : '400',
+                  color: match.penaltyWinner === match.homeTeam ? 'var(--success)' : 'var(--text-muted)'
+                }}>
+                  {match.homeTeam}
+                </span>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--warning)' }}>
+                  {match.penaltyHome} - {match.penaltyAway}
+                </span>
+                <span style={{
+                  fontSize: '11px', fontWeight: match.penaltyWinner === match.awayTeam ? '700' : '400',
+                  color: match.penaltyWinner === match.awayTeam ? 'var(--success)' : 'var(--text-muted)'
+                }}>
+                  {match.awayTeam}
+                </span>
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--success)', fontWeight: '600', marginTop: '2px' }}>
+                Clasifica: {match.penaltyWinner} ✅
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+
       {!isFinished && !isLive && (
         <div style={{ textAlign: 'center', marginTop: '8px' }}>
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -78,6 +134,11 @@ const MatchCard = ({ match, prediction, showPrediction = false, children }) => {
           <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--secondary)' }}>
             {prediction.homeScore} - {prediction.awayScore}
           </span>
+          {prediction.penaltyWinner && (
+            <div style={{ fontSize: '11px', color: 'var(--warning)', marginTop: '2px' }}>
+              ⚽ Penales: {prediction.penaltyHome}-{prediction.penaltyAway} · Clasifica {prediction.penaltyWinner}
+            </div>
+          )}
         </div>
       )}
 
