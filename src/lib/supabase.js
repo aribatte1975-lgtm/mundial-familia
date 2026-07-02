@@ -179,9 +179,11 @@ export const updateMatch = async (matchId, updates) => {
   const isKnockout = ['Dieciseisavos','Octavos de Final','Cuartos de Final','Semifinal'].includes(data.stage)
   const homeWins = result.homeScore > result.awayScore
   const awayWins = result.awayScore > result.homeScore
-  const isPenaltyWithWinner = result.isPenalty && !!result.penaltyWinner
-  const isExtraTimeWithWinner = result.resolutionType === 'extra_time' && (homeWins || awayWins)
-  const hasWinner = homeWins || awayWins || isPenaltyWithWinner || isExtraTimeWithWinner
+  const resolvedAfterDraw =
+    (result.resolutionType === 'extra_time' || result.resolutionType === 'penalties' || result.isPenalty) &&
+    !!result.penaltyWinner
+
+  const hasWinner = homeWins || awayWins || resolvedAfterDraw
 
   if (updates.status === 'finished' && isKnockout && hasWinner) {
     const propagation = await propagateBracket(result)
@@ -366,19 +368,13 @@ export const calculatePoints = (prediction, match, settings) => {
     // Suplementario
     if (match.resolutionType === 'extra_time') {
       if (prediction.predictedResolution === 'extra_time') {
-        // Acertó suplementario, ahora verificar quién clasifica
-        const matchWinner = match.homeScore > match.awayScore
-          ? match.homeTeam : match.awayTeam
-
-        // En suplementario el ganador se ve en el score normal del match
-        // (el admin carga el score del tiempo extra)
-        // Verificamos si el jugador eligió el equipo correcto
-        if (prediction.penaltyWinner === matchWinner) {
+        // En prórroga, el clasificado lo guardamos en penaltyWinner
+        if (prediction.penaltyWinner && match.penaltyWinner &&
+            prediction.penaltyWinner === match.penaltyWinner) {
           basePoints += s.pointsCorrect
           breakdown.push({ label: '🎯 Acertó suplementario + clasificado', points: s.pointsCorrect })
         } else {
-          // Solo acertó el tipo pero no el equipo
-          breakdown.push({ label: '⚽ Acertó suplementario (equipo incorrecto)', points: 0 })
+          breakdown.push({ label: '⏱️ Acertó suplementario (clasificado incorrecto)', points: 0 })
         }
       }
     }
@@ -425,11 +421,7 @@ export const calculatePoints = (prediction, match, settings) => {
   }
 }
 
-// =============================================
-// RANKING
-// =============================================
-
-export const getRanking = async () => {
+const buildTournamentStats = async () => {
   const [users, matches, predictions, settings, specialPreds, specialResults] = await Promise.all([
     getUsers(),
     getMatches(),
@@ -439,7 +431,13 @@ export const getRanking = async () => {
     getSpecialResults()
   ])
 
-  const finished = matches.filter(m => m.status === 'finished')
+  const finished = matches
+  .filter(m => m.status === 'finished')
+  .sort((a, b) => {
+    const dateDiff = new Date(a.datetime) - new Date(b.datetime)
+    if (dateDiff !== 0) return dateDiff
+    return a.id - b.id
+  })
 
   return users.map(user => {
     let totalPoints = 0
@@ -447,56 +445,134 @@ export const getRanking = async () => {
     let correctPredictions = 0
     let wrongPredictions = 0
     let bestStreak = 0
-    let tempStreak = 0
     let currentStreak = 0
+    let tempStreak = 0
+    let bonusPoints = 0
 
-    predictions
-      .filter(p => p.userId === user.id)
-      .sort((a, b) => {
-        const ma = matches.find(m => m.id === a.matchId)
-        const mb = matches.find(m => m.id === b.matchId)
-        return new Date(ma?.datetime || 0) - new Date(mb?.datetime || 0)
-      })
-      .forEach(pred => {
-        const match = finished.find(m => m.id === pred.matchId)
-        if (!match) return
-        const result = calculatePoints(pred, match, settings)
-        if (!result) return
-        totalPoints += result.points
-        if (result.type === 'exact') { exactPredictions++; tempStreak++ }
-        else if (result.type === 'correct') { correctPredictions++; tempStreak++ }
-        else { wrongPredictions++; tempStreak = 0 }
-        if (tempStreak > bestStreak) bestStreak = tempStreak
-        currentStreak = tempStreak
-      })
+    const timeline = []
 
-    // Bonus racha
-    const bonusPoints = Math.floor(bestStreak / settings.bonusStreak) * settings.pointsBonus
-    totalPoints += bonusPoints
+    const userPredictions = predictions
+    .filter(p => p.userId === user.id)
+    .sort((a, b) => {
+      const ma = matches.find(m => m.id === a.matchId)
+      const mb = matches.find(m => m.id === b.matchId)
 
-    // Puntos especiales (campeón, goleador, etc.)
+      const dateDiff = new Date(ma?.datetime || 0) - new Date(mb?.datetime || 0)
+      if (dateDiff !== 0) return dateDiff
+      return (ma?.id || 0) - (mb?.id || 0)
+    })
+
+finished.forEach((match, idx) => {
+  const pred = userPredictions.find(p => p.matchId === match.id)
+
+  if (pred) {
+    const result = calculatePoints(pred, match, settings)
+    if (result) {
+      const streakBefore = tempStreak
+      let bonusAdded = 0
+
+      totalPoints += result.points
+
+      if (result.type === 'exact') {
+        exactPredictions++
+        tempStreak++
+      } else if (result.type === 'correct') {
+        correctPredictions++
+        tempStreak++
+      } else {
+        wrongPredictions++
+        tempStreak = 0
+      }
+
+      if (tempStreak > bestStreak) bestStreak = tempStreak
+      currentStreak = tempStreak
+
+      if (tempStreak > 0 && tempStreak % settings.bonusStreak === 0) {
+        totalPoints += settings.pointsBonus
+        bonusPoints += settings.pointsBonus
+        bonusAdded = settings.pointsBonus
+      }
+
+      
+    }
+  }
+
+  timeline.push({
+    matchNum: idx + 1,
+    matchLabel: `${match.homeFlag}${match.awayFlag}`,
+    points: totalPoints
+  })
+})
+
+
+    // Puntos especiales
     let specialPoints = 0
     const userSpecialPreds = specialPreds.filter(p => p.userId === user.id)
+
     userSpecialPreds.forEach(pred => {
       const result = specialResults.find(r => r.type === pred.type)
       if (result && pred.value.toLowerCase() === result.value.toLowerCase()) {
         specialPoints += result.points
       }
     })
+
     totalPoints += specialPoints
 
-  const wildcardsUsed = predictions
-  .filter(p => p.userId === user.id && p.isWildcard)
-  .length
+    // reflejar puntos especiales al final de la evolución
+    if (timeline.length > 0) {
+      timeline[timeline.length - 1] = {
+        ...timeline[timeline.length - 1],
+        points: totalPoints
+      }
+    }
 
-  return {
-    ...user, totalPoints, exactPredictions, correctPredictions,
-    wrongPredictions,
-    totalPredictions: exactPredictions + correctPredictions + wrongPredictions,
-    currentStreak, bestStreak, bonusPoints, specialPoints,
-    wildcardsUsed
-  }
-  }).sort((a, b) => b.totalPoints - a.totalPoints)
+    const wildcardsUsed = predictions
+      .filter(p => p.userId === user.id && p.isWildcard)
+      .length
+
+    return {
+      ...user,
+      totalPoints,
+      exactPredictions,
+      correctPredictions,
+      wrongPredictions,
+      totalPredictions: exactPredictions + correctPredictions + wrongPredictions,
+      currentStreak,
+      bestStreak,
+      bonusPoints,
+      specialPoints,
+      wildcardsUsed,
+      data: timeline
+    }
+  })
+}
+
+// =============================================
+// RANKING
+// =============================================
+
+export const getRanking = async () => {
+  const stats = await buildTournamentStats()
+
+  return stats
+    .map(player => ({
+      id: player.id,
+      name: player.name,
+      emoji: player.emoji,
+      pin: player.pin,
+      isAdmin: player.isAdmin,
+      totalPoints: player.totalPoints,
+      exactPredictions: player.exactPredictions,
+      correctPredictions: player.correctPredictions,
+      wrongPredictions: player.wrongPredictions,
+      totalPredictions: player.totalPredictions,
+      currentStreak: player.currentStreak,
+      bestStreak: player.bestStreak,
+      bonusPoints: player.bonusPoints,
+      specialPoints: player.specialPoints,
+      wildcardsUsed: player.wildcardsUsed
+    }))
+    .sort((a, b) => b.totalPoints - a.totalPoints)
 }
 
 // =============================================
@@ -793,41 +869,15 @@ export const getAllWildcardsByUser = async (userId) => {
 // =============================================
 
 export const getPointsEvolution = async () => {
-  const [users, matches, predictions, settings] = await Promise.all([
-    getUsers(), getMatches(), getPredictions(), getSettings()
-  ])
+  const stats = await buildTournamentStats()
 
-  const finished = matches
-    .filter(m => m.status === 'finished')
-    .sort((a, b) => new Date(a.datetime) - new Date(b.datetime))
-
-  // Para cada usuario, calcular puntos acumulados partido a partido
-  const evolution = users.map(user => {
-    let accumulated = 0
-    const points = finished.map((match, idx) => {
-      const pred = predictions.find(
-        p => p.userId === user.id && p.matchId === match.id
-      )
-      if (pred) {
-        const result = calculatePoints(pred, match, settings)
-        if (result) accumulated += result.points
-      }
-      return {
-        matchNum: idx + 1,
-        matchLabel: `${match.homeFlag}${match.awayFlag}`,
-        points: accumulated
-      }
-    })
-
-    return {
-      id: user.id,
-      name: user.name,
-      emoji: user.emoji,
-      data: points
-    }
-  })
-
-  return evolution
+  return stats.map(player => ({
+    id: player.id,
+    name: player.name,
+    emoji: player.emoji,
+    data: player.data,
+    totalPoints: player.totalPoints
+  }))
 }
 
 // =============================================
@@ -1093,8 +1143,11 @@ const BRACKET_MAP = {
 }
 
 const getMatchWinner = (match) => {
-  // Si hubo penales, manda el ganador por penales
-  if (match.isPenalty && match.penaltyWinner) {
+  // Si hubo resolución posterior al empate (prórroga o penales)
+  if (
+    (match.resolutionType === 'extra_time' || match.resolutionType === 'penalties' || match.isPenalty) &&
+    match.penaltyWinner
+  ) {
     if (match.penaltyWinner === match.homeTeam) {
       return { name: match.homeTeam, flag: match.homeFlag }
     }
@@ -1103,7 +1156,7 @@ const getMatchWinner = (match) => {
     }
   }
 
-  // Si no hubo penales, usar resultado normal
+  // Si no hubo resolución extra, usar resultado normal
   if (match.homeScore > match.awayScore) {
     return { name: match.homeTeam, flag: match.homeFlag }
   }
@@ -1111,13 +1164,15 @@ const getMatchWinner = (match) => {
     return { name: match.awayTeam, flag: match.awayFlag }
   }
 
-  // Empate sin ganador definido
   return null
 }
 
 const getMatchLoser = (match) => {
-  // Si hubo penales, el perdedor es el otro
-  if (match.isPenalty && match.penaltyWinner) {
+  // Si hubo resolución posterior al empate (prórroga o penales)
+  if (
+    (match.resolutionType === 'extra_time' || match.resolutionType === 'penalties' || match.isPenalty) &&
+    match.penaltyWinner
+  ) {
     if (match.penaltyWinner === match.homeTeam) {
       return { name: match.awayTeam, flag: match.awayFlag }
     }
@@ -1126,7 +1181,7 @@ const getMatchLoser = (match) => {
     }
   }
 
-  // Si no hubo penales, usar resultado normal
+  // Si no hubo resolución extra, usar resultado normal
   if (match.homeScore > match.awayScore) {
     return { name: match.awayTeam, flag: match.awayFlag }
   }

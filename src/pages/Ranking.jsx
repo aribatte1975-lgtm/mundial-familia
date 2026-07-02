@@ -380,6 +380,7 @@ const Ranking = () => {
                   </div>
                 </div>
 
+                {/* Stats principales */}
                 <div style={{
                   display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
                   gap: '8px', marginTop: '12px', padding: '12px',
@@ -389,14 +390,102 @@ const Ranking = () => {
                     { val: player.exactPredictions, label: 'EXACTOS', color: 'var(--secondary)' },
                     { val: player.correctPredictions, label: 'ACIERTOS', color: 'var(--success)' },
                     { val: player.wrongPredictions, label: 'FALLOS', color: 'var(--danger)' },
-                    { val: `🔥${player.bestStreak}`, label: 'RACHA', color: 'var(--warning)' },
-                    { val: `🃏${player.wildcardsUsed || 0}/3`, label: 'COMODÍN', color: 'var(--info)' },
+                    { val: `🔥${player.bestStreak}`, label: 'MÁX RACHA', color: 'var(--warning)' },
                   ].map(s => (
                     <div key={s.label} style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '18px', fontWeight: '700', color: s.color }}>{s.val}</div>
                       <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{s.label}</div>
                     </div>
                   ))}
+                </div>
+
+                {/* Desglose de puntos */}
+                <div style={{
+                  marginTop: '8px', padding: '10px 12px',
+                  background: 'var(--bg-dark)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '11px',
+                  display: 'flex', flexDirection: 'column', gap: '4px'
+                }}>
+                  <div style={{
+                    fontSize: '10px', fontWeight: '700',
+                    color: 'var(--text-muted)', textTransform: 'uppercase',
+                    letterSpacing: '0.5px', marginBottom: '2px'
+                  }}>
+                    📊 Desglose de puntos
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      ⭐ Exactos ({player.exactPredictions} × 5)
+                    </span>
+                    <span style={{ fontWeight: '700', color: 'var(--secondary)' }}>
+                      {player.exactPredictions * 5}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      ✅ Correctos ({player.correctPredictions} × 3)
+                    </span>
+                    <span style={{ fontWeight: '700', color: 'var(--success)' }}>
+                      {player.correctPredictions * 3}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      🔥 Bonus racha
+                    </span>
+                    <span style={{ fontWeight: '700', color: 'var(--warning)' }}>
+                      +{player.bonusPoints || 0}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      🃏 Comodines usados
+                    </span>
+                    <span style={{ fontWeight: '700', color: 'var(--info)' }}>
+                      {player.wildcardsUsed || 0}/3
+                    </span>
+                  </div>
+
+                  {player.specialPoints > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        🎯 Especiales
+                      </span>
+                      <span style={{ fontWeight: '700', color: 'var(--accent-light)' }}>
+                        +{player.specialPoints}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Extras por comodines y penales/suplementario */}
+                  {(player.totalPoints - (player.exactPredictions * 5 + player.correctPredictions * 3 + (player.bonusPoints || 0) + (player.specialPoints || 0))) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        ⚽ Extras (🃏/penales/suplem.)
+                      </span>
+                      <span style={{ fontWeight: '700', color: 'var(--primary-light)' }}>
+                        +{player.totalPoints - (player.exactPredictions * 5 + player.correctPredictions * 3 + (player.bonusPoints || 0) + (player.specialPoints || 0))}
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    marginTop: '4px', paddingTop: '6px',
+                    borderTop: '1px solid var(--border)'
+                  }}>
+                    <span style={{ fontWeight: '700', color: 'var(--text-secondary)' }}>
+                      🏆 TOTAL
+                    </span>
+                    <span style={{ fontWeight: '800', fontSize: '14px', color: 'var(--secondary)' }}>
+                      {player.totalPoints} pts
+                    </span>
+                  </div>
                 </div>
 
                 {selectedPlayer === player.id && (
